@@ -523,7 +523,7 @@ function AdminPanel({ dbTopics, setDbTopics, dbShadowing, setDbShadowing, adminP
   const [tab, setTab] = useState('topics');
   const [editingTopic, setEditingTopic] = useState(null);
   const [editingShadow, setEditingShadow] = useState(null);
-  const [shadowItemsText, setShadowItemsText] = useState('');
+  const [shadowItemRows, setShadowItemRows] = useState([{ fr: '', ipa: '', vi: '', en: '' }]);
 
   const [newPwd, setNewPwd] = useState('');
   const [confirmPwd, setConfirmPwd] = useState('');
@@ -568,10 +568,27 @@ function AdminPanel({ dbTopics, setDbTopics, dbShadowing, setDbShadowing, adminP
 
   const saveShadow = async (isPublished) => {
     if (!editingShadow.title) { alert("Nhập tên bài học!"); return; }
-    const parsedItems = shadowItemsText.split('\n').filter(line => line.trim() !== '').map(line => {
-      const parts = line.split('/').map(p => p.trim());
-      return { fr: parts[0] || '', ipa: parts[1] || '', vi: parts[2] || '', en: parts[3] || '' };
-    });
+
+    const parsedItems = shadowItemRows
+      .map(row => ({
+        fr: (row.fr || '').trim(),
+        ipa: (row.ipa || '').trim(),
+        vi: (row.vi || '').trim(),
+        en: (row.en || '').trim()
+      }))
+      .filter(row => row.fr || row.ipa || row.vi || row.en);
+
+    if (parsedItems.length === 0) {
+      alert("Vui lòng nhập ít nhất 1 từ vựng hoặc câu shadowing!");
+      return;
+    }
+
+    const missingFrench = parsedItems.some(row => !row.fr);
+    if (missingFrench) {
+      alert("Mỗi dòng cần có nội dung tiếng Pháp.");
+      return;
+    }
+
     const newShadow = { ...editingShadow, items: parsedItems, isPublished };
     if (!newShadow.id) newShadow.id = 's_' + Date.now();
 
@@ -696,10 +713,36 @@ function AdminPanel({ dbTopics, setDbTopics, dbShadowing, setDbShadowing, adminP
     }
   };
 
+  const emptyShadowItem = () => ({ fr: '', ipa: '', vi: '', en: '' });
+
+  const normalizeShadowItemsForForm = (items = []) => {
+    const rows = items.map(i => ({
+      fr: i.fr ?? i.jp ?? '',
+      ipa: i.ipa ?? i.romaji ?? '',
+      vi: i.vi ?? '',
+      en: i.en ?? ''
+    }));
+    return rows.length ? rows : [emptyShadowItem()];
+  };
+
+  const updateShadowItemRow = (index, field, value) => {
+    setShadowItemRows(prev => prev.map((row, i) => (
+      i === index ? { ...row, [field]: value } : row
+    )));
+  };
+
+  const addShadowItemRow = () => {
+    setShadowItemRows(prev => [...prev, emptyShadowItem()]);
+  };
+
+  const removeShadowItemRow = (index) => {
+    setShadowItemRows(prev => prev.length === 1 ? [emptyShadowItem()] : prev.filter((_, i) => i !== index));
+  };
+
   const startEditTopic = (t) => { setEditingTopic({ ...t }); };
   const startEditShadow = (s) => {
     setEditingShadow({ ...s });
-    setShadowItemsText(s.items.map(i => `${i.fr ?? i.jp ?? ''} / ${i.ipa ?? i.romaji ?? ''} / ${i.vi} ${i.en ? `/ ${i.en}` : ''}`).join('\n'));
+    setShadowItemRows(normalizeShadowItemsForForm(s.items));
   };
 
   return (
@@ -799,7 +842,7 @@ function AdminPanel({ dbTopics, setDbTopics, dbShadowing, setDbShadowing, adminP
                 <>
                   <div className="flex justify-between items-center mb-6">
                     <h3 className="font-bold text-xl text-slate-800">Kho Shadowing</h3>
-                    <button onClick={() => { setEditingShadow({ id: 's_' + Date.now(), title: '', level: 'A1', type: 'sentence', isPublished: false, items: [] }); setShadowItemsText(''); }} className="bg-[#0055A4] text-white px-4 py-2 rounded-lg font-bold text-sm"><Plus size={18} className="inline" /> Thêm mới</button>
+                    <button onClick={() => { setEditingShadow({ id: 's_' + Date.now(), title: '', level: 'A1', type: 'sentence', isPublished: false, items: [] }); setShadowItemRows([emptyShadowItem()]); }} className="bg-[#0055A4] text-white px-4 py-2 rounded-lg font-bold text-sm"><Plus size={18} className="inline" /> Thêm mới</button>
                   </div>
                   <div className="space-y-4">
                     {dbShadowing.map(shadow => (
@@ -831,16 +874,45 @@ function AdminPanel({ dbTopics, setDbTopics, dbShadowing, setDbShadowing, adminP
                     <div><label className="block text-sm font-bold mb-1">Tên bài học</label><input type="text" value={editingShadow.title} onChange={e => setEditingShadow({ ...editingShadow, title: e.target.value })} className="w-full p-3 border rounded-xl" /></div>
                   </div>
                   <div className="mb-4">
-                    <label className="block text-sm font-bold mb-2">Danh sách Từ vựng / Câu</label>
-                    <div className="bg-blue-50 text-blue-800 p-4 rounded-xl text-sm font-medium mb-3 border border-blue-200 shadow-inner">
-                      <p className="mb-2"><strong>Cú pháp bắt buộc:</strong> <code>Tiếng Pháp / IPA / Phiên âm / Tiếng Việt / Tiếng Anh</code> (Ngăn cách bằng dấu <code>/</code>)</p>
-                      <p className="mb-2"><strong>Gợi ý:</strong> Có thể nhập IPA để hỗ trợ giáo viên và học viên, ví dụ <code>bɔ̃ʒuʁ</code>.</p>
-                      <ul className="list-disc pl-5 space-y-1 mt-2 text-xs opacity-90">
-                        <li>VD Từ vựng: <code>Bonjour / bɔ̃ʒuʁ / Xin chào / Hello</code></li>
-                        <li>VD Câu văn: <code>Je m’appelle Marie. / ʒə mapɛl maʁi / Tôi tên là Marie. / My name is Marie.</code></li>
-                      </ul>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="block text-sm font-bold">Danh sách Từ vựng / Câu</label>
+                      <button type="button" onClick={addShadowItemRow} className="bg-blue-100 text-[#0055A4] hover:bg-blue-200 px-3 py-1.5 rounded-lg font-bold text-xs flex items-center gap-1"><Plus size={14} /> Thêm dòng</button>
                     </div>
-                    <textarea value={shadowItemsText} onChange={e => setShadowItemsText(e.target.value)} className="w-full p-4 border rounded-xl h-64 font-mono text-sm leading-relaxed" placeholder="Bonjour / bɔ̃ʒuʁ / Xin chào / Hello" />
+                    <div className="bg-blue-50 text-blue-800 p-4 rounded-xl text-sm font-medium mb-4 border border-blue-200 shadow-inner">
+                      <p className="text-xs opacity-90">Format lưu tự động: <code>Tiếng Pháp / IPA / Tiếng Việt / Tiếng Anh</code>. IPA vẫn được giữ để hỗ trợ phát âm.</p>
+                    </div>
+
+                    <div className="space-y-3">
+                      {shadowItemRows.map((row, index) => (
+                        <div key={index} className="p-4 border border-slate-200 rounded-2xl bg-slate-50/80">
+                          <div className="flex items-center justify-between mb-3">
+                            <span className="text-xs font-black text-slate-500 uppercase tracking-wide">Mục {index + 1}</span>
+                            <button type="button" onClick={() => removeShadowItemRow(index)} className="text-red-500 hover:text-red-700 text-xs font-bold flex items-center gap-1"><Trash2 size={14} /> Xóa</button>
+                          </div>
+                          <div className="grid md:grid-cols-4 gap-3">
+                            <div>
+                              <label className="block text-xs font-bold mb-1 text-slate-700">Tiếng Pháp</label>
+                              <input value={row.fr} onChange={e => updateShadowItemRow(index, 'fr', e.target.value)} className="w-full p-3 border border-slate-300 rounded-xl focus:border-[#0055A4] outline-none" placeholder={editingShadow.type === 'vocab' ? 'Bonjour' : 'Je m’appelle Marie.'} />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-bold mb-1 text-slate-700">IPA</label>
+                              <input value={row.ipa} onChange={e => updateShadowItemRow(index, 'ipa', e.target.value)} className="w-full p-3 border border-slate-300 rounded-xl focus:border-[#0055A4] outline-none font-mono" placeholder={editingShadow.type === 'vocab' ? 'bɔ̃ʒuʁ' : 'ʒə mapɛl maʁi'} />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-bold mb-1 text-slate-700">Tiếng Việt</label>
+                              <input value={row.vi} onChange={e => updateShadowItemRow(index, 'vi', e.target.value)} className="w-full p-3 border border-slate-300 rounded-xl focus:border-[#0055A4] outline-none" placeholder={editingShadow.type === 'vocab' ? 'Xin chào' : 'Tôi tên là Marie.'} />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-bold mb-1 text-slate-700">Tiếng Anh</label>
+                              <input value={row.en} onChange={e => updateShadowItemRow(index, 'en', e.target.value)} className="w-full p-3 border border-slate-300 rounded-xl focus:border-[#0055A4] outline-none" placeholder={editingShadow.type === 'vocab' ? 'Hello' : 'My name is Marie.'} />
+                            </div>
+                          </div>
+                          <div className="mt-3 text-xs text-slate-500 font-mono bg-white border border-slate-200 rounded-lg p-2">
+                            Preview: {(row.fr || 'Tiếng Pháp') + ' / ' + (row.ipa || 'IPA') + ' / ' + (row.vi || 'Tiếng Việt') + ' / ' + (row.en || 'Tiếng Anh')}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                   <div className="flex gap-4 mt-8 pt-4 border-t"><button onClick={() => saveShadow(false)} className="flex-1 bg-slate-200 py-3 rounded-xl font-bold">Lưu Nháp</button><button onClick={() => saveShadow(true)} className="flex-1 bg-[#0055A4] text-white py-3 rounded-xl font-bold">Lưu & Public</button></div>
                 </div>
@@ -920,60 +992,366 @@ function generateGradingResultFallback(transcript, expectedRawText, level, mode,
       : 'Đây là đánh giá cơ bản dự phòng. Hãy dùng thu âm trực tiếp và AI để nhận phân tích chi tiết hơn về phát âm tiếng Pháp.'
   };
 }
+
+// ---------------------------------------------------------
+// SAFETY FILTER: tránh feedback sai về liaison / nối âm
+// ---------------------------------------------------------
+
+const normalizeFrenchForCheck = (text = '') =>
+  text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[’']/g, "'")
+    .replace(/[^a-zàâçéèêëîïôûùüÿñæœ'\s-]/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const startsWithVowelOrH = (word = '') => /^[aeiouyh]/i.test(word);
+
+const hasLikelyLiaisonConsonant = (word = '') => {
+  const clean = normalizeFrenchForCheck(word).replace(/[^a-z]/g, '');
+  if (!clean) return false;
+
+  // Một số từ chức năng thường có liaison khi đứng trước nguyên âm/h muet.
+  const commonLiaisonWords = new Set([
+    'les', 'des', 'mes', 'tes', 'ses', 'nos', 'vos', 'leurs',
+    'un', 'deux', 'trois', 'six', 'dix',
+    'vous', 'nous', 'ils', 'elles', 'on',
+    'est', 'sont', 'ont', 'avait', 'avaient',
+    'tres', 'plus', 'moins', 'chez', 'dans', 'sans', 'sous',
+    'petit', 'grand', 'bon', 'mauvais', 'premier', 'dernier'
+  ]);
+
+  if (commonLiaisonWords.has(clean)) return true;
+
+  // Tránh coi các từ như "de", "et", "après" là liaison bắt buộc.
+  const neverForceLiaison = new Set(['de', 'et', 'apres', 'a', 'la', 'le', 'du', 'au']);
+  if (neverForceLiaison.has(clean)) return false;
+
+  return /[sxztnrdp]$/.test(clean);
+};
+
+const getLikelyLiaisonPairs = (text = '') => {
+  const words = normalizeFrenchForCheck(text).split(' ').filter(Boolean);
+  const pairs = [];
+
+  for (let i = 0; i < words.length - 1; i++) {
+    const current = words[i];
+    const next = words[i + 1];
+    if (hasLikelyLiaisonConsonant(current) && startsWithVowelOrH(next)) {
+      pairs.push(`${current} ${next}`);
+    }
+  }
+
+  return pairs;
+};
+
+const containsLiaisonComment = (text = '') => {
+  const value = text.toLowerCase();
+  return value.includes('liaison') || value.includes('enchaînement') || value.includes('enchainement') || value.includes('nối âm') || value.includes('liên kết');
+};
+
+const sanitizeLiaisonFeedback = (result, expectedText = '') => {
+  if (!result || typeof result !== 'object') return result;
+
+  const validLiaisonPairs = getLikelyLiaisonPairs(expectedText);
+  const hasValidLiaisonOpportunity = validLiaisonPairs.length > 0;
+
+  // Nếu câu không có cơ hội liaison rõ ràng, loại bỏ các lỗi liaison do AI tự bịa.
+  if (!hasValidLiaisonOpportunity) {
+    if (Array.isArray(result.errors)) {
+      result.errors = result.errors.filter((err) => {
+        const combined = `${err?.word || ''} ${err?.issue || ''} ${err?.suggestion || ''}`;
+        return !containsLiaisonComment(combined);
+      });
+    }
+
+    if (typeof result.feedback === 'string' && containsLiaisonComment(result.feedback)) {
+      const sentences = result.feedback
+        .split(/(?<=[.!?。])\s+/)
+        .filter(sentence => !containsLiaisonComment(sentence));
+
+      result.feedback = sentences.join(' ').trim() || result.feedback
+        .replace(/[^.!?。]*liaison[^.!?。]*[.!?。]?/gi, '')
+        .replace(/[^.!?。]*encha[îi]nement[^.!?。]*[.!?。]?/gi, '')
+        .replace(/[^.!?。]*(nối âm|liên kết)[^.!?。]*[.!?。]?/gi, '')
+        .trim();
+    }
+  }
+
+  // Nếu có cơ hội liaison, vẫn yêu cầu lỗi phải trỏ tới cặp từ thật trong câu.
+  if (hasValidLiaisonOpportunity && Array.isArray(result.errors)) {
+    result.errors = result.errors.filter((err) => {
+      const combined = normalizeFrenchForCheck(`${err?.word || ''} ${err?.issue || ''} ${err?.suggestion || ''}`);
+      if (!containsLiaisonComment(combined)) return true;
+      return validLiaisonPairs.some(pair => combined.includes(pair));
+    });
+  }
+
+  if (!result.feedback || !result.feedback.trim()) {
+    result.feedback = 'Phần nói của bạn đã được ghi nhận. Hệ thống không phát hiện lỗi nối âm cụ thể có đủ bằng chứng, vì vậy feedback tập trung vào độ rõ ràng, nhịp điệu và tính dễ hiểu chung.';
+  }
+
+  return result;
+};
+
 const evaluateWithGemini = async (transcript, expectedText, level, mode, lang, requirement = '') => {
   const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-  const systemPrompt = `You are an experienced French pronunciation and speaking coach specialized in teaching pronunciation, speaking, and real-life communication to foreign language learners.
+  const systemPrompt = `You are an expert French pronunciation coach, CEFR examiner, and spoken-language evaluator.
+
 Language for feedback: ${lang === 'en' ? 'English' : 'Vietnamese'}.
 Task Mode: ${mode} (vocab = single word, sentence = shadowing, topic = presentation, free = unstructured speech).
-Student's CEFR Target Level: ${level}.
+Student CEFR Target: ${level}.
 Topic Requirement: "${requirement || 'None'}"
-Model Answer / Expected French Text: "${expectedText || 'None'}"
-Student's Voice Transcript: "${transcript}"
+Expected French Text: "${expectedText || 'None'}"
+Student Voice Transcript: "${transcript}"
 
-CORE PRINCIPLES:
-1. Evaluate like a real French teacher, not like a mechanical speech-recognition system.
-2. French spoken naturally includes liaison, enchaînement, reductions, rhythm groups, and sentence intonation.
-3. Do NOT over-penalize natural connected speech, light foreign accent, or small sound imperfections if the student is fluent and easy to understand.
-4. A natural, comprehensible French sentence is more important than pronouncing every isolated sound perfectly.
-5. If the learner speaks word-by-word too slowly or robotically, reduce fluency, naturalness, and intonation/rhythm scores.
+==================================================
+PRIMARY EVALUATION PHILOSOPHY
+==================================================
 
-MODE RULES:
-- WORD MODE: Check vowels, consonants, nasal vowels, French /ʁ/, and vowel distinctions more carefully, while still accepting a light learner accent.
-- SENTENCE MODE: Prioritize naturalness, fluency, rhythm, intonation, and comprehensibility. Do not mechanically split every word.
-- TOPIC MODE: The model answer is only a suggestion. Evaluate whether the student satisfies the topic requirement, communicates in French, and uses appropriate grammar/vocabulary.
-- FREE MODE: Estimate CEFR level from pronunciation, fluency, grammar, vocabulary range, and communicative ability.
+Evaluate like a real French teacher and pronunciation coach, not like speech-recognition software.
 
-LANGUAGE DETECTION RULE:
-If the student speaks mostly Vietnamese, English, Chinese, German, Spanish, or another non-French language unrelated to the exercise:
+The most important question is:
+"If a native French speaker heard this, would it be understandable, natural, and communicative?"
+
+If the answer is YES:
+- reward the learner
+- do not over-penalize small pronunciation imperfections
+- do not force isolated-word pronunciation if the sentence sounds naturally connected
+
+Natural, comprehensible communication is more important than perfect phonetic precision.
+
+==================================================
+CRITICAL EVIDENCE-BASED FEEDBACK RULE
+==================================================
+
+Every correction must be supported by evidence from the expected text and/or the student transcript.
+
+You may only mention an error if:
+1. the relevant word, sound, or word pair actually appears in the expected text or transcript; AND
+2. there is evidence that the learner likely produced it incorrectly; AND
+3. the issue affects clarity, naturalness, rhythm, or intelligibility.
+
+If you are uncertain, do NOT generate a correction.
+It is better to omit a correction than to invent one.
+
+Never generate generic comments such as:
+- "Practice liaison more."
+- "Improve nasal vowels."
+- "Work on French R."
+- "Pay attention to intonation."
+
+Instead, feedback must name the exact word, sound, or word pair that needs attention.
+
+==================================================
+FRENCH CONNECTED SPEECH RULES
+==================================================
+
+French naturally includes:
+- connected speech
+- reductions
+- rhythm groups
+- sentence melody
+- enchaînement
+- liaison when appropriate
+
+Do NOT penalize natural connected speech.
+Do NOT expect every word to be pronounced separately.
+Do NOT mechanically split every word in sentence mode.
+
+==================================================
+STRICT LIAISON & ENCHAÎNEMENT RULES
+==================================================
+
+Only mention liaison or enchaînement if ALL conditions are met:
+
+1. The expected sentence actually contains a valid liaison or enchaînement opportunity.
+2. The student's transcript suggests that the connected pronunciation was not produced naturally.
+3. You can identify the exact word pair involved.
+
+Examples of valid liaison:
+- les enfants
+- vous avez
+- deux amis
+- trois heures
+- très intéressant
+- ils ont
+- nous avons
+
+Examples where liaison normally does NOT exist or should NOT be forced:
+- de nouvelles
+- et Marie
+- après lui
+- la amie should be treated as a grammar/article issue, not liaison
+
+VERY IMPORTANT:
+"de nouvelles" is NOT a liaison example. Never tell the learner to practice liaison between "de" and "nouvelles".
+
+Never write:
+- "Hãy luyện tập thêm về liaison."
+- "Hãy luyện tập thêm về liên kết giữa các từ."
+- "Practice word linking more."
+
+unless you provide a specific, valid word pair.
+
+If no valid liaison issue is detected, do not mention liaison at all.
+
+==================================================
+NASAL VOWEL RULES
+==================================================
+
+Only mention nasal vowel errors if:
+- the expected word contains a nasal vowel; AND
+- there is evidence that the learner mispronounced it.
+
+Examples of words with nasal vowels:
+- bon
+- bien
+- français
+- blanc
+- enfant
+- important
+
+Do NOT automatically generate nasal vowel feedback.
+If uncertain, omit it.
+
+==================================================
+FRENCH R RULES
+==================================================
+
+Only mention French /ʁ/ if:
+- the expected word contains /ʁ/; AND
+- there is evidence that the learner produced it incorrectly or it affected intelligibility.
+
+Do NOT automatically tell learners to improve French R.
+If uncertain, omit it.
+
+==================================================
+SILENT LETTER RULES
+==================================================
+
+Only mention silent final letters if:
+- the word actually contains a normally silent final letter; AND
+- the transcript/evidence suggests the learner pronounced it incorrectly.
+
+Do not invent silent-letter errors.
+
+==================================================
+MODE RULES
+==================================================
+
+WORD MODE:
+Focus more carefully on:
+- vowel quality
+- consonants
+- nasal vowels when present
+- French /ʁ/ when present
+- intelligibility
+
+Sentence rhythm matters less.
+
+SENTENCE MODE:
+Prioritize:
+- fluency
+- rhythm
+- natural delivery
+- sentence melody
+- comprehensibility
+
+Do not over-focus on individual phonemes.
+A natural sentence should score higher than a robotic word-by-word sentence.
+
+TOPIC MODE:
+The model answer is only a reference, not a required script.
+Evaluate:
+- topic completion
+- communication ability
+- grammar
+- vocabulary
+- fluency
+- pronunciation
+
+Do not compare sentence-by-sentence with the model answer.
+
+FREE MODE:
+Estimate CEFR from:
+- fluency
+- pronunciation
+- grammar
+- vocabulary range
+- coherence
+- communicative effectiveness
+
+==================================================
+NON-FRENCH DETECTION
+==================================================
+
+If the response is mostly Vietnamese, English, Chinese, Japanese, German, Spanish, or another non-French language unrelated to the exercise:
 - set severity to "major"
 - lower comprehensibility and overall score significantly
 - clearly state that the response was not primarily in French
-- explain that French pronunciation and fluency could not be evaluated accurately.
+- explain that French pronunciation and fluency could not be evaluated accurately
+
 Do not reward a response that is mainly not in French.
 
-FRENCH-SPECIFIC PRONUNCIATION AREAS:
-- nasal vowels: /ɑ̃/, /ɛ̃/, /ɔ̃/
-- French /ʁ/
-- distinction between /u/ and /y/ as in "vous" vs "tu"
-- silent final letters
-- liaison and enchaînement when appropriate
-- syllable-timed rhythm and French sentence melody
+==================================================
+SCORING CALIBRATION
+==================================================
 
-ERROR ANALYSIS:
-If there are pronunciation errors, identify the exact word or sound, explain what was wrong, and give a practical correction.
-Examples:
-- The "u" in "tu" sounds too close to "ou". Round your lips but keep the tongue forward.
-- The nasal sound in "bon" is not nasal enough. Let some air resonate through the nose instead of adding a final "ne".
-- The French "r" sounds too English. Relax the throat and create the sound farther back.
+9.0 - 10.0:
+Natural, highly understandable, only minor imperfections.
 
-SEVERITY:
-- "minor" = small issue, still natural and easy to understand
-- "moderate" = affects clarity or naturalness somewhat
-- "major" = causes misunderstanding or the response is mostly not French
+8.0 - 8.9:
+Strong communication, small pronunciation or rhythm issues.
+
+7.0 - 7.9:
+Good communication, noticeable but non-blocking issues.
+
+6.0 - 6.9:
+Understandable but needs improvement.
+
+5.0 - 5.9:
+Frequent issues affecting naturalness or clarity.
+
+Below 5.0:
+Communication significantly impaired or not primarily in French.
+
+Severity:
+- minor = small issue, still natural and easy to understand
+- moderate = affects clarity or naturalness somewhat
+- major = causes misunderstanding or response is mostly not French
+
 Only use "major" when communication is truly affected.
 
-CRITICAL TONE & PRONOUN RULE:
-When writing feedback in Vietnamese, always use the neutral pronoun "bạn" for the student and "Hệ thống" or "AI" for yourself. Never use "em", "thầy", "cô", "mình", or "tôi". Keep the tone professional, warm, specific, and encouraging.
+==================================================
+VIETNAMESE FEEDBACK STYLE
+==================================================
+
+When writing feedback in Vietnamese:
+Use:
+- "bạn"
+- "Hệ thống"
+- "AI"
+
+Never use:
+- em
+- thầy
+- cô
+- mình
+- tôi
+
+Tone must be:
+- professional
+- warm
+- specific
+- encouraging
+- evidence-based
+
+==================================================
+OUTPUT FORMAT
+==================================================
 
 Return ONLY a valid JSON object matching this schema:
 {
@@ -981,7 +1359,7 @@ Return ONLY a valid JSON object matching this schema:
   "level": "Performance rank. English: Excellent/Good/Fair/Needs Practice. Vietnamese: Xuất sắc/Giỏi/Khá/Cần cố gắng",
   "estimated_cefr": "Estimated CEFR level: A1, A2, B1, B2, C1, or C2. Mandatory for free mode, otherwise may be empty.",
   "severity": "minor/moderate/major",
-  "feedback": "Detailed, personalized feedback with specific pronunciation guidance.",
+  "feedback": "Detailed, personalized feedback based only on detected evidence.",
   "pronunciation_score": "0.0 to 10.0 string",
   "fluency_score": "0.0 to 10.0 string",
   "naturalness_score": "0.0 to 10.0 string",
@@ -992,13 +1370,13 @@ Return ONLY a valid JSON object matching this schema:
   "topic_relevance_score": "0.0 to 10.0 string",
   "errors": [
     {
-      "word": "example word",
-      "issue": "specific issue",
+      "word": "exact word, sound, or valid word pair from expected text/transcript",
+      "issue": "specific issue supported by evidence",
       "severity": "minor/moderate/major",
       "suggestion": "specific correction"
     }
   ]
-}`
+}`;
 
   const payload = {
     model: "gpt-4.1-mini",
@@ -1031,7 +1409,8 @@ Return ONLY a valid JSON object matching this schema:
         const match = textRes.match(/\{[\s\S]*\}/);
         if (match) {
           try {
-            return JSON.parse(match[0]);
+            const parsedResult = JSON.parse(match[0]);
+            return sanitizeLiaisonFeedback(parsedResult, expectedText);
           } catch (parseErr) {
             console.error("JSON Parse Error", parseErr);
             throw new Error("Invalid JSON format");
