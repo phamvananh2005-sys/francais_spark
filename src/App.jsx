@@ -228,8 +228,67 @@ export default function App() {
         #printable-report { position: absolute; left: 0; top: 0; width: 100%; box-shadow: none !important; border: none !important; margin: 0 !important; padding: 0 !important; }
         .no-print { display: none !important; }
       }
-      .paris-bg { background: linear-gradient(180deg, #EAF4FF 0%, #F8FBFF 48%, #FFFFFF 100%); position: relative; min-height: 100vh; overflow-x: hidden; }
+      :root {
+        --fr-blue: #0055A4;
+        --fr-blue-dark: #073763;
+        --fr-red: #EF4135;
+        --fr-cream: #FFF8ED;
+        --fr-ink: #0F2440;
+      }
+      .paris-bg {
+        position: relative;
+        min-height: 100vh;
+        overflow-x: hidden;
+        background: #f8fbff;
+      }
+      .paris-bg::before {
+        content: "";
+        position: fixed;
+        inset: 64px 0 0 0;
+        z-index: 0;
+        pointer-events: none;
+        background-image:
+          linear-gradient(90deg, rgba(255,255,255,.24) 0%, rgba(255,255,255,.55) 38%, rgba(255,255,255,.66) 58%, rgba(255,255,255,.22) 100%),
+          linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(248,251,255,.10) 54%, rgba(255,255,255,.82) 100%),
+          url("https://images.unsplash.com/photo-1502602898657-3e91760cbb34?auto=format&fit=crop&w=2600&q=95");
+        background-size: cover;
+        background-position: center 38%;
+        filter: saturate(1.08) contrast(1.06) brightness(1.02);
+      }
+      .paris-bg::after {
+        content: "";
+        position: fixed;
+        inset: 0;
+        z-index: 1;
+        pointer-events: none;
+        background:
+          radial-gradient(circle at 34% 26%, rgba(255,255,255,.48), rgba(255,255,255,0) 22%),
+          radial-gradient(circle at 82% 20%, rgba(234,244,255,.35), rgba(255,255,255,0) 24%),
+          linear-gradient(180deg, rgba(255,255,255,0) 66%, rgba(255,255,255,.88) 100%);
+      }
       .app-content { position: relative; z-index: 10; }
+      .{
+        font-family: inherit;
+        letter-spacing: normal;
+      }
+      .glass-card {
+        background: rgba(255,255,255,.82);
+        backdrop-filter: blur(18px);
+        box-shadow: 0 18px 45px rgba(15, 36, 64, .14), inset 0 1px 0 rgba(255,255,255,.8);
+      }
+      .mode-card:hover {
+        transform: translateY(-7px);
+      }
+      .paris-road-fade {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 32vh;
+        z-index: 2;
+        pointer-events: none;
+        background: linear-gradient(180deg, rgba(255,255,255,0), rgba(255,255,255,.58) 62%, rgba(255,255,255,.94));
+      }
     `;
     document.head.appendChild(style);
     return () => document.head.removeChild(style);
@@ -276,18 +335,25 @@ export default function App() {
   };
 
   const renderHome = () => (
-    <div className="animate-in fade-in zoom-in-95 duration-500 max-w-4xl mx-auto mt-12 px-4 pb-20">
-      <div className="text-center mb-8">
-        <h2 className="text-3xl font-black text-slate-800 mb-4">{t('welcome')}</h2>
-        <p className="text-slate-600 font-medium flex items-center justify-center gap-2">
-          {t('subtitle')} <Sparkles size={16} className="text-[#0055A4]" />
+    <section className="animate-in fade-in zoom-in-95 duration-700 max-w-6xl mx-auto px-4 sm:px-6 pt-12 md:pt-16 pb-20">
+      <div className="text-center mb-10">
+        <div className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/55 backdrop-blur-xl px-4 py-1.5 text-xs font-extrabold tracking-[0.24em] uppercase text-[#0055A4] shadow-sm mb-5">
+          <span className="h-2 w-2 rounded-full bg-[#0055A4]"></span>
+          French Speaking Studio
+          <span className="h-2 w-2 rounded-full bg-[#EF4135]"></span>
+        </div>
+        <h2 className="text-3xl font-black text-slate-800 mb-4 drop-shadow-sm">{t('welcome')}</h2>
+        <p className="text-slate-600 font-medium text-base md:text-lg flex items-center justify-center gap-2">
+          {t('subtitle')} <Sparkles size={18} className="text-[#0055A4]" />
         </p>
       </div>
 
-      <div className="mb-10 max-w-md mx-auto">
-        <label className="block text-center font-bold text-slate-700 mb-3">{t('step1')}</label>
-        <div className="bg-white/95 backdrop-blur-sm p-2 pl-5 rounded-2xl shadow-md border border-[#CFE6FF] flex items-center gap-3 focus-within:ring-2 focus-within:ring-[#0055A4]/50 transition-all">
-          <User className={studentName.trim() ? "text-green-500 transition-colors" : "text-[#0055A4] transition-colors"} />
+      <div className="mb-12 max-w-xl mx-auto">
+        <label className="block text-center font-black text-[#0F2440] mb-4">{t('step1')}</label>
+        <div className="glass-card p-2.5 pl-6 rounded-3xl border border-white/75 flex items-center gap-4 focus-within:ring-4 focus-within:ring-[#0055A4]/20 focus-within:border-[#0055A4]/45 transition-all">
+          <div className="h-10 w-10 rounded-2xl bg-[#F1F7FF] flex items-center justify-center border border-[#D9EBFF]">
+            <User className={studentName.trim() ? "text-green-500 transition-colors" : "text-[#0055A4] transition-colors"} size={22} />
+          </div>
           <input
             id="student-name-input"
             type="text"
@@ -295,90 +361,83 @@ export default function App() {
             value={studentName}
             onChange={(e) => setStudentName(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
-            className="flex-1 bg-transparent outline-none font-bold text-slate-800 placeholder:text-slate-400 placeholder:font-medium py-2"
+            className="flex-1 bg-transparent outline-none font-bold text-slate-800 placeholder:text-slate-400 placeholder:font-semibold py-3 text-base"
           />
           {studentName.trim() && (
-            <span className="bg-green-100 text-green-700 px-3 py-1.5 rounded-xl text-xs font-bold animate-in zoom-in flex items-center gap-1">
+            <span className="bg-green-100 text-green-700 px-3 py-2 rounded-2xl text-xs font-bold animate-in zoom-in flex items-center gap-1 mr-1">
               <CheckCircle2 size={14} /> {t('received')}
             </span>
           )}
         </div>
       </div>
 
-      <div className="text-center mb-6">
-        <label className="block font-bold text-slate-700">{t('step2')}</label>
+      <div className="text-center mb-7">
+        <label className="block font-black text-[#0F2440] text-lg">{t('step2')}</label>
       </div>
 
-      <div className="grid md:grid-cols-3 gap-6">
-        <button onClick={() => handleModeSelect('shadowing')} className="bg-white/90 backdrop-blur-sm rounded-3xl p-8 border border-[#CFE6FF] shadow-lg hover:shadow-2xl hover:border-[#0055A4] transition-all group text-left relative overflow-hidden">
-          <div className="absolute -right-6 -top-6 w-24 h-24 bg-blue-50 rounded-full group-hover:scale-150 transition-transform duration-500"></div>
-          <MessageCircle size={40} className="text-[#0055A4] mb-6 relative z-10" />
-          <h3 className="text-xl font-bold text-slate-800 mb-2 relative z-10">{t('shadowingTitle')}</h3>
-          <p className="text-slate-600 text-sm relative z-10 leading-relaxed">{t('shadowingDesc')}</p>
+      <div className="grid md:grid-cols-3 gap-7 max-w-4xl mx-auto">
+        <button onClick={() => handleModeSelect('shadowing')} className="mode-card glass-card rounded-[2rem] p-8 border border-white/80 hover:border-[#0055A4]/45 transition-all duration-300 group text-left relative overflow-hidden">
+          <div className="absolute -right-10 -top-10 w-32 h-32 bg-[#EAF4FF] rounded-full group-hover:scale-150 transition-transform duration-700"></div>
+          <div className="absolute left-0 top-0 h-1.5 w-full bg-gradient-to-r from-[#0055A4] via-white to-[#EF4135]"></div>
+          <MessageCircle size={44} className="text-[#0055A4] mb-7 relative z-10" />
+          <h3 className="text-xl font-bold text-slate-800 mb-3 relative z-10">{t('shadowingTitle')}</h3>
+          <p className="text-slate-600 text-sm relative z-10 leading-7 font-medium">{t('shadowingDesc')}</p>
         </button>
 
-        <button onClick={() => handleModeSelect('topic')} className="bg-white/90 backdrop-blur-sm rounded-3xl p-8 border border-[#CFE6FF] shadow-lg hover:shadow-2xl hover:border-[#0055A4] transition-all group text-left relative overflow-hidden">
-          <div className="absolute -right-6 -top-6 w-24 h-24 bg-blue-50 rounded-full group-hover:scale-150 transition-transform duration-500"></div>
-          <BookOpen size={40} className="text-[#0055A4] mb-6 relative z-10" />
-          <h3 className="text-xl font-bold text-slate-800 mb-2 relative z-10">{t('topicTitle')}</h3>
-          <p className="text-slate-600 text-sm relative z-10 leading-relaxed">{t('topicDesc')}</p>
+        <button onClick={() => handleModeSelect('topic')} className="mode-card glass-card rounded-[2rem] p-8 border border-white/80 hover:border-[#0055A4]/45 transition-all duration-300 group text-left relative overflow-hidden">
+          <div className="absolute -right-10 -top-10 w-32 h-32 bg-[#EAF4FF] rounded-full group-hover:scale-150 transition-transform duration-700"></div>
+          <div className="absolute left-0 top-0 h-1.5 w-full bg-gradient-to-r from-[#0055A4] via-white to-[#EF4135]"></div>
+          <BookOpen size={44} className="text-[#0055A4] mb-7 relative z-10" />
+          <h3 className="text-xl font-bold text-slate-800 mb-3 relative z-10">{t('topicTitle')}</h3>
+          <p className="text-slate-600 text-sm relative z-10 leading-7 font-medium">{t('topicDesc')}</p>
         </button>
 
-        <button onClick={() => handleModeSelect('free')} className="bg-white/90 backdrop-blur-sm rounded-3xl p-8 border border-[#CFE6FF] shadow-lg hover:shadow-2xl hover:border-[#0055A4] transition-all group text-left relative overflow-hidden">
-          <div className="absolute -right-6 -top-6 w-24 h-24 bg-green-50 rounded-full group-hover:scale-150 transition-transform duration-500"></div>
-          <Mic size={40} className="text-[#0055A4] mb-6 relative z-10" />
-          <h3 className="text-xl font-bold text-slate-800 mb-2 relative z-10">{t('freeTitle')}</h3>
-          <p className="text-slate-600 text-sm relative z-10 leading-relaxed">{t('freeDesc')}</p>
+        <button onClick={() => handleModeSelect('free')} className="mode-card glass-card rounded-[2rem] p-8 border border-white/80 hover:border-[#0055A4]/45 transition-all duration-300 group text-left relative overflow-hidden">
+          <div className="absolute -right-10 -top-10 w-32 h-32 bg-[#EEFFF5] rounded-full group-hover:scale-150 transition-transform duration-700"></div>
+          <div className="absolute left-0 top-0 h-1.5 w-full bg-gradient-to-r from-[#0055A4] via-white to-[#EF4135]"></div>
+          <Mic size={44} className="text-[#0055A4] mb-7 relative z-10" />
+          <h3 className="text-xl font-bold text-slate-800 mb-3 relative z-10">{t('freeTitle')}</h3>
+          <p className="text-slate-600 text-sm relative z-10 leading-7 font-medium">{t('freeDesc')}</p>
         </button>
       </div>
 
-      <div className="mt-16 text-center">
-        <button onClick={() => setActiveMode('adminLogin')} className="text-xs text-slate-400 hover:text-[#0055A4] transition-colors underline decoration-dotted">
-          {t('adminLink')}
+      <div className="mt-12 text-center">
+        <button onClick={() => setActiveMode('adminLogin')} className="inline-flex items-center gap-2 text-sm text-[#0055A4] hover:text-[#073763] transition-colors font-bold">
+          <User size={16} /> {t('adminLink')}
         </button>
       </div>
-    </div>
+    </section>
   );
 
   return (
     <LanguageContext.Provider value={{ lang, setLang, t }}>
       <div className="paris-bg text-slate-800 font-sans selection:bg-[#0055A4] selection:text-white">
 
-        {/* PARIS BACKGROUND: THÁP EIFFEL + BẦU TRỜI XANH NHẠT */}
+        {/* PARIS BACKGROUND: ảnh Paris hiện đại + lớp phủ trắng để nội dung dễ đọc */}
         <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
-          <div className="absolute right-[-40px] bottom-0 w-[280px] md:w-[420px] opacity-10 text-[#0055A4]">
-            <svg viewBox="0 0 220 420" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
-              <path d="M110 20 L45 395 M110 20 L175 395" stroke="currentColor" strokeWidth="8" strokeLinecap="round"/>
-              <path d="M72 150 H148 M58 235 H162 M38 395 H182" stroke="currentColor" strokeWidth="10" strokeLinecap="round"/>
-              <path d="M85 110 H135 M75 190 H145 M62 310 H158" stroke="currentColor" strokeWidth="5" strokeLinecap="round"/>
-              <path d="M80 395 C80 345 140 345 140 395" stroke="currentColor" strokeWidth="8" strokeLinecap="round"/>
-              <path d="M65 255 L155 255 M58 290 L162 290" stroke="currentColor" strokeWidth="4" strokeLinecap="round"/>
-            </svg>
-          </div>
-          <div className="absolute left-10 top-24 w-24 h-24 rounded-full bg-white/40 blur-2xl"></div>
-          <div className="absolute left-1/3 top-12 w-36 h-36 rounded-full bg-blue-100/50 blur-3xl"></div>
-          <div className="absolute bottom-0 left-0 w-full h-44 bg-gradient-to-t from-white/80 to-transparent"></div>
+          <div className="absolute left-[-120px] top-[64px] h-[calc(100vh-64px)] w-[42vw] hidden lg:block bg-gradient-to-r from-white/35 to-transparent"></div>
+          <div className="paris-road-fade"></div>
         </div>
 
-        <header className="bg-white/90 backdrop-blur-md shadow-sm border-b border-[#CFE6FF] sticky top-0 z-50 app-content no-print">
-          <div className="max-w-5xl mx-auto px-4 h-16 flex justify-between items-center">
+        <header className="bg-white/78 backdrop-blur-2xl shadow-sm border-b border-white/70 sticky top-0 z-50 app-content no-print">
+          <div className="max-w-6xl mx-auto px-4 h-16 flex justify-between items-center">
             <div className="flex items-center gap-3 cursor-pointer" onClick={() => { setActiveMode(null); }}>
               {!logoError ? (
-                <img src="171045151_1082518945577423_933278627676106455_n (4).png" alt="MVA Logo" className="h-8 w-auto object-contain" onError={() => setLogoError(true)} />
+                <img src="171045151_1082518945577423_933278627676106455_n (4).png" alt="MVA Logo" className="h-10 w-auto object-contain drop-shadow-sm" onError={() => setLogoError(true)} />
               ) : (
-                <div className="w-8 h-8 flex items-center justify-center">
+                <div className="w-10 h-10 flex items-center justify-center">
                   <svg viewBox="0 0 100 100" fill="none" stroke="#FF6600" strokeWidth="12" strokeLinecap="butt" strokeLinejoin="miter" className="w-full h-full">
                     <path d="M 15 90 L 15 15 L 50 50 L 85 15 L 85 90" />
                     <path d="M 85 90 L 50 50" />
                   </svg>
                 </div>
               )}
-              <h1 className="font-bold text-xl tracking-tight hidden sm:block"><span className="text-[#0055A4]">FRANÇAIS</span><span className="text-slate-800"> SPARK</span></h1>
+              <h1 className="font-bold text-xl tracking-tight hidden sm:block"><span className="text-[#0055A4]">FRANÇAIS</span><span className="text-[#0F2440]"> SPARK</span></h1>
             </div>
 
             <div className="flex items-center gap-3">
               {/* Language Switch */}
-              <div className="flex bg-slate-100/80 rounded-full p-1 border border-slate-200">
+              <div className="flex bg-white/65 rounded-full p-1 border border-slate-200 shadow-sm backdrop-blur-xl">
                 <button onClick={() => setLang('vi')} className={`px-2 py-0.5 text-xs font-bold rounded-full transition-colors ${lang === 'vi' ? 'bg-white shadow text-[#0055A4]' : 'text-slate-500'}`}>VI</button>
                 <button onClick={() => setLang('en')} className={`px-2 py-0.5 text-xs font-bold rounded-full transition-colors ${lang === 'en' ? 'bg-white shadow text-[#0055A4]' : 'text-slate-500'}`}>EN</button>
               </div>
