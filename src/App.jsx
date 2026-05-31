@@ -9,8 +9,8 @@ import { supabase } from './supabase';
 
 const normalizeDbItem = (item) => ({
   ...item,
-  hint: item.hint ? { ...item.hint, fr: item.hint.fr ?? item.hint.jp ?? '', ipa: item.hint.ipa ?? item.hint.romaji ?? '' } : item.hint,
-  items: Array.isArray(item.items) ? item.items.map(i => ({ ...i, fr: i.fr ?? i.jp ?? '', ipa: i.ipa ?? i.romaji ?? '' })) : item.items,
+  hint: item.hint ? { ...item.hint, fr: item.hint.fr ?? item.hint.jp ?? '' } : item.hint,
+  items: Array.isArray(item.items) ? item.items.map(i => ({ ...i, fr: i.fr ?? i.jp ?? '' })) : item.items,
   isPublished: item.isPublished ?? item.ispublished
 });
 
@@ -523,7 +523,7 @@ function AdminPanel({ dbTopics, setDbTopics, dbShadowing, setDbShadowing, adminP
   const [tab, setTab] = useState('topics');
   const [editingTopic, setEditingTopic] = useState(null);
   const [editingShadow, setEditingShadow] = useState(null);
-  const [shadowItemRows, setShadowItemRows] = useState([{ fr: '', ipa: '', vi: '', en: '' }]);
+  const [shadowItemRows, setShadowItemRows] = useState([{ fr: '', vi: '', en: '' }]);
 
   const [newPwd, setNewPwd] = useState('');
   const [confirmPwd, setConfirmPwd] = useState('');
@@ -540,7 +540,15 @@ function AdminPanel({ dbTopics, setDbTopics, dbShadowing, setDbShadowing, adminP
 
   const saveTopic = async (isPublished) => {
     if (!editingTopic.title) { alert("Nhập tên chủ đề!"); return; }
-    const newTopic = { ...editingTopic, isPublished };
+    const newTopic = {
+      ...editingTopic,
+      hint: {
+        fr: editingTopic.hint?.fr || '',
+        vi: editingTopic.hint?.vi || '',
+        en: editingTopic.hint?.en || ''
+      },
+      isPublished
+    };
     if (!newTopic.id) newTopic.id = 't_' + Date.now();
 
     try {
@@ -572,11 +580,10 @@ function AdminPanel({ dbTopics, setDbTopics, dbShadowing, setDbShadowing, adminP
     const parsedItems = shadowItemRows
       .map(row => ({
         fr: (row.fr || '').trim(),
-        ipa: (row.ipa || '').trim(),
         vi: (row.vi || '').trim(),
         en: (row.en || '').trim()
       }))
-      .filter(row => row.fr || row.ipa || row.vi || row.en);
+      .filter(row => row.fr || row.vi || row.en);
 
     if (parsedItems.length === 0) {
       alert("Vui lòng nhập ít nhất 1 từ vựng hoặc câu shadowing!");
@@ -713,12 +720,11 @@ function AdminPanel({ dbTopics, setDbTopics, dbShadowing, setDbShadowing, adminP
     }
   };
 
-  const emptyShadowItem = () => ({ fr: '', ipa: '', vi: '', en: '' });
+  const emptyShadowItem = () => ({ fr: '', vi: '', en: '' });
 
   const normalizeShadowItemsForForm = (items = []) => {
     const rows = items.map(i => ({
       fr: i.fr ?? i.jp ?? '',
-      ipa: i.ipa ?? i.romaji ?? '',
       vi: i.vi ?? '',
       en: i.en ?? ''
     }));
@@ -783,7 +789,7 @@ function AdminPanel({ dbTopics, setDbTopics, dbShadowing, setDbShadowing, adminP
                 <>
                   <div className="flex justify-between items-center mb-6">
                     <h3 className="font-bold text-xl text-slate-800">Kho Chủ đề</h3>
-                    <button onClick={() => setEditingTopic({ id: 't_' + Date.now(), title: '', level: 'A1', req: '', isPublished: false, hint: { fr: '', ipa: '', vi: '', en: '' } })} className="bg-[#0055A4] text-white hover:bg-[#003F7D] px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 shadow-md"><Plus size={18} /> Thêm mới</button>
+                    <button onClick={() => setEditingTopic({ id: 't_' + Date.now(), title: '', level: 'A1', req: '', isPublished: false, hint: { fr: '', vi: '', en: '' } })} className="bg-[#0055A4] text-white hover:bg-[#003F7D] px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 shadow-md"><Plus size={18} /> Thêm mới</button>
                   </div>
                   <div className="space-y-4">
                     {dbTopics.map(topic => (
@@ -823,10 +829,9 @@ function AdminPanel({ dbTopics, setDbTopics, dbShadowing, setDbShadowing, adminP
                   <div className="p-4 border rounded-xl bg-slate-50 space-y-3">
                     <label className="block text-sm font-bold text-slate-800 border-b pb-2">Bài nói mẫu</label>
                     <div className="bg-blue-50 text-blue-800 p-3 rounded-lg text-xs font-medium border border-blue-200">
-                      Cấu trúc gợi ý: nhập câu tiếng Pháp tự nhiên. Có thể thêm IPA ở ô bên dưới nếu cần.
+                      Chỉ cần nhập câu tiếng Pháp tự nhiên. Hệ thống sẽ dùng trực tiếp văn bản tiếng Pháp để đọc mẫu và chấm điểm.
                     </div>
                     <div><label className="block text-xs font-bold mb-1">Tiếng Pháp</label><textarea value={editingTopic.hint.fr} onChange={e => setEditingTopic({ ...editingTopic, hint: { ...editingTopic.hint, fr: e.target.value } })} className="w-full p-2 border rounded-lg h-24" placeholder="VD: Bonjour, je m’appelle Marie." /></div>
-                    <div><label className="block text-xs font-bold mb-1">IPA / Phiên âm</label><input type="text" value={editingTopic.hint.ipa} onChange={e => setEditingTopic({ ...editingTopic, hint: { ...editingTopic.hint, ipa: e.target.value } })} className="w-full p-2 border rounded-lg" /></div>
                     <div><label className="block text-xs font-bold mb-1">Tiếng Việt</label><input type="text" value={editingTopic.hint.vi} onChange={e => setEditingTopic({ ...editingTopic, hint: { ...editingTopic.hint, vi: e.target.value } })} className="w-full p-2 border rounded-lg" /></div>
                     <div><label className="block text-xs font-bold mb-1">Tiếng Anh (Cho giao diện EN)</label><input type="text" value={editingTopic.hint.en || ''} onChange={e => setEditingTopic({ ...editingTopic, hint: { ...editingTopic.hint, en: e.target.value } })} className="w-full p-2 border rounded-lg" /></div>
                   </div>
@@ -879,7 +884,7 @@ function AdminPanel({ dbTopics, setDbTopics, dbShadowing, setDbShadowing, adminP
                       <button type="button" onClick={addShadowItemRow} className="bg-blue-100 text-[#0055A4] hover:bg-blue-200 px-3 py-1.5 rounded-lg font-bold text-xs flex items-center gap-1"><Plus size={14} /> Thêm dòng</button>
                     </div>
                     <div className="bg-blue-50 text-blue-800 p-4 rounded-xl text-sm font-medium mb-4 border border-blue-200 shadow-inner">
-                      <p className="text-xs opacity-90">Format lưu tự động: <code>Tiếng Pháp / IPA / Tiếng Việt / Tiếng Anh</code>. IPA vẫn được giữ để hỗ trợ phát âm.</p>
+                      <p className="text-xs opacity-90">Chỉ cần nhập <code>Tiếng Pháp / Tiếng Việt / Tiếng Anh</code>. Không cần IPA/phiên âm.</p>
                     </div>
 
                     <div className="space-y-3">
@@ -889,14 +894,10 @@ function AdminPanel({ dbTopics, setDbTopics, dbShadowing, setDbShadowing, adminP
                             <span className="text-xs font-black text-slate-500 uppercase tracking-wide">Mục {index + 1}</span>
                             <button type="button" onClick={() => removeShadowItemRow(index)} className="text-red-500 hover:text-red-700 text-xs font-bold flex items-center gap-1"><Trash2 size={14} /> Xóa</button>
                           </div>
-                          <div className="grid md:grid-cols-4 gap-3">
+                          <div className="grid md:grid-cols-3 gap-3">
                             <div>
                               <label className="block text-xs font-bold mb-1 text-slate-700">Tiếng Pháp</label>
                               <input value={row.fr} onChange={e => updateShadowItemRow(index, 'fr', e.target.value)} className="w-full p-3 border border-slate-300 rounded-xl focus:border-[#0055A4] outline-none" placeholder={editingShadow.type === 'vocab' ? 'Bonjour' : 'Je m’appelle Marie.'} />
-                            </div>
-                            <div>
-                              <label className="block text-xs font-bold mb-1 text-slate-700">IPA</label>
-                              <input value={row.ipa} onChange={e => updateShadowItemRow(index, 'ipa', e.target.value)} className="w-full p-3 border border-slate-300 rounded-xl focus:border-[#0055A4] outline-none font-mono" placeholder={editingShadow.type === 'vocab' ? 'bɔ̃ʒuʁ' : 'ʒə mapɛl maʁi'} />
                             </div>
                             <div>
                               <label className="block text-xs font-bold mb-1 text-slate-700">Tiếng Việt</label>
@@ -908,7 +909,7 @@ function AdminPanel({ dbTopics, setDbTopics, dbShadowing, setDbShadowing, adminP
                             </div>
                           </div>
                           <div className="mt-3 text-xs text-slate-500 font-mono bg-white border border-slate-200 rounded-lg p-2">
-                            Preview: {(row.fr || 'Tiếng Pháp') + ' / ' + (row.ipa || 'IPA') + ' / ' + (row.vi || 'Tiếng Việt') + ' / ' + (row.en || 'Tiếng Anh')}
+                            Preview: {(row.fr || 'Tiếng Pháp') + ' / ' + (row.vi || 'Tiếng Việt') + ' / ' + (row.en || 'Tiếng Anh')}
                           </div>
                         </div>
                       ))}
@@ -1810,7 +1811,6 @@ function FreeAndTopicMode({ type, studentName, onRequireName, dbTopics }) {
                       <div className="text-lg font-medium text-slate-900 tracking-wide break-words">
                         <DisplayText text={currentTopic.hint.fr} />
                       </div>
-                      <p className="text-sm font-mono text-[#0055A4] leading-relaxed mt-2 pt-2 border-t border-slate-100">{currentTopic.hint.ipa}</p>
                       <p className="text-sm text-slate-600 italic border-l-2 border-slate-300 pl-3 leading-relaxed mt-2">{currentTopic.hint[lang] || currentTopic.hint.vi}</p>
                     </div>
                   </div>
@@ -2074,7 +2074,6 @@ function ShadowingMode({ studentName, onRequireName, dbShadowing }) {
               <div className="text-2xl sm:text-3xl md:text-4xl font-medium text-slate-900 mb-4 font-serif tracking-wide leading-relaxed break-words">
                 <DisplayText text={currentItem.fr} />
               </div>
-              <p className="text-base font-mono text-[#0055A4] mb-1 break-words">{currentItem.ipa}</p>
               <p className="text-sm text-slate-500 italic break-words">{currentItem[lang] || currentItem.vi}</p>
             </div>
 
