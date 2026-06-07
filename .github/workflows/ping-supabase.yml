@@ -2,7 +2,7 @@ name: Keep Supabase Alive
 
 on:
   schedule:
-    - cron: '0 0 */3 * *' # mỗi 3 ngày
+    - cron: '0 0 * * *' # mỗi ngày
   workflow_dispatch:
 
 jobs:
@@ -12,6 +12,7 @@ jobs:
     steps:
       - name: Ping Supabase
         run: |
-          curl -L -X GET \
-          'https://jjtfazrvhlontuotqzfn.supabase.co/rest/v1/' \
-          -H 'apikey: ${{ secrets.SUPABASE_KEY }}'
+          curl -L \
+          "https://fpcavcypxfynkepysdsq.supabase.co/rest/v1/topics?select=id&limit=1" \
+          -H "apikey: ${{ secrets.SUPABASE_KEY }}" \
+          -H "Authorization: Bearer ${{ secrets.SUPABASE_KEY }}"
