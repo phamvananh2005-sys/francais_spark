@@ -9,8 +9,20 @@ import { supabase } from './supabase';
 
 const normalizeDbItem = (item) => ({
   ...item,
-  hint: item.hint ? { ...item.hint, fr: item.hint.fr ?? item.hint.jp ?? '' } : item.hint,
-  items: Array.isArray(item.items) ? item.items.map(i => ({ ...i, fr: i.fr ?? i.jp ?? '' })) : item.items,
+  hint: item.hint ? {
+    ...item.hint,
+    fr: item.hint.fr ?? item.hint.jp ?? '',
+    audioUrl: item.hint.audioUrl ?? item.hint.audio_url ?? '',
+    slowAudioUrl: item.hint.slowAudioUrl ?? item.hint.slow_audio_url ?? ''
+  } : item.hint,
+  items: Array.isArray(item.items)
+    ? item.items.map(i => ({
+        ...i,
+        fr: i.fr ?? i.jp ?? '',
+        audioUrl: i.audioUrl ?? i.audio_url ?? '',
+        slowAudioUrl: i.slowAudioUrl ?? i.slow_audio_url ?? ''
+      }))
+    : item.items,
   isPublished: item.isPublished ?? item.ispublished
 });
 
@@ -18,6 +30,266 @@ const toDbItem = ({ isPublished, ispublished, ...item }) => ({
   ...item,
   ispublished: isPublished ?? ispublished
 });
+
+
+// ---------------------------------------------------------
+// FREE-ONLY MODEL AUDIO ENGINE — CALM FRENCH PROSODY
+// ---------------------------------------------------------
+// Không dùng Google Cloud / API trả phí. App sẽ ưu tiên audio mẫu do giáo viên cung cấp,
+// sau đó mới dùng voice miễn phí có sẵn trong trình duyệt. Nếu Chrome/thiết bị có voice
+// "Google Français" thì app sẽ tự chọn voice đó.
+//
+// Lưu ý thật: không có API miễn phí, chính thức để dùng trực tiếp giọng Google Dịch.
+// Vì vậy bản free-only này cố gắng chọn voice gần nhất + xử lý nhịp câu cho điềm đạm hơn,
+// nhưng muốn giống Google Dịch 100% thì cần audio mẫu riêng hoặc dịch vụ TTS có phí.
+let activeModelAudio = null;
+let activeBrowserTTSRunId = 0;
+
+const stopFreeModelAudio = () => {
+  try {
+    if (activeModelAudio) {
+      activeModelAudio.pause();
+      activeModelAudio.currentTime = 0;
+      activeModelAudio = null;
+    }
+  } catch (_) {}
+
+  // Hủy browser TTS đang chạy. Bản trước bị lỗi gọi lại chính hàm này, có thể gây treo.
+  try {
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+  } catch (_) {}
+
+  activeBrowserTTSRunId += 1;
+};
+
+const normalizeFrenchPunctuation = (text = '') => String(text || '')
+  .replace(/\s*\/\s*/g, ', ')
+  .replace(/[“”]/g, '"')
+  .replace(/[‘’]/g, '’')
+  .replace(/\s+([,.;:!?])/g, '$1')
+  .replace(/([,.;:!?])([^\s])/g, '$1 $2')
+  .replace(/\s+/g, ' ')
+  .trim();
+
+const addGentleFrenchPauses = (text = '', speedMode = 'normal') => {
+  let value = normalizeFrenchPunctuation(text);
+  if (!value) return '';
+
+  // Các câu nhập bởi giáo viên thường thiếu dấu phẩy nên browser TTS đọc vội và ít nhấn nhá.
+  // Chỉ thêm ở những vị trí an toàn, không động vào chính tả từ tiếng Pháp.
+  const safeCommaRules = [
+    [/^(Bonjour|Bonsoir|Salut)\s+(je|tu|il|elle|nous|vous|ils|elles)\b/i, '$1, $2'],
+    [/\b(oui|non|d’accord|bien sûr|merci)\s+(je|tu|il|elle|nous|vous|ils|elles)\b/gi, '$1, $2'],
+    [/\b(aujourd’hui|demain|maintenant|ensuite|puis|après|par exemple)\s+/gi, '$1, '],
+    [/\b(je m’appelle|je m'appelle)\s+([^,.;:!?]+)\s+et\s+je\b/i, '$1 $2, et je'],
+    [/\b(j’aime|j'aime)\s+([^,.;:!?]+)\s+parce que\b/i, '$1 $2, parce que'],
+    [/\b(mon|ma)\s+([^,.;:!?]+)\s+est\s+/i, '$1 $2 est ']
+  ];
+  safeCommaRules.forEach(([pattern, replacement]) => {
+    value = value.replace(pattern, replacement);
+  });
+
+  // Nếu là một câu dài nhưng không có dấu nghỉ, thêm một nghỉ nhẹ trước et/mais/parce que.
+  if (value.length > 42 && !/[,:;]/.test(value)) {
+    value = value
+      .replace(/\s+(mais|parce que|car)\s+/i, ', $1 ')
+      .replace(/\s+et\s+(je|tu|il|elle|nous|vous|ils|elles)\b/i, ', et $1');
+  }
+
+  // Ở chế độ chậm, thêm dấu chấm lửng ngắn ở cuối câu để browser voice hạ nhịp tự nhiên hơn.
+  // Không chèn giữa các từ vì sẽ làm tiếng Pháp bị rời rạc.
+  if (speedMode === 'slow') {
+    value = value.replace(/[.。]+$/g, '');
+    if (!/[!?]$/.test(value)) value = `${value}.`;
+  } else if (!/[.!?]$/.test(value)) {
+    value = `${value}.`;
+  }
+
+  return value.replace(/\s+/g, ' ').trim();
+};
+
+const cleanFrenchTextForTTS = (text = '') => addGentleFrenchPauses(text, 'normal');
+
+const getBrowserVoices = () => new Promise((resolve) => {
+  if (!('speechSynthesis' in window)) return resolve([]);
+  const existing = window.speechSynthesis.getVoices();
+  if (existing && existing.length) return resolve(existing);
+
+  let settled = false;
+  const finish = () => {
+    if (settled) return;
+    settled = true;
+    resolve(window.speechSynthesis.getVoices() || []);
+  };
+
+  window.speechSynthesis.onvoiceschanged = finish;
+  setTimeout(finish, 750);
+});
+
+const scoreFrenchVoice = (voice) => {
+  const name = String(voice?.name || '').toLowerCase();
+  const lang = String(voice?.lang || '').toLowerCase();
+  let score = 0;
+
+  if (lang === 'fr-fr') score += 150;
+  else if (lang.startsWith('fr-')) score += 90;
+  else if (lang.startsWith('fr')) score += 70;
+  else score -= 300;
+
+  // Ưu tiên voice Google nếu trình duyệt có sẵn. Đây là free vì dùng voice local/browser,
+  // không gọi API bên ngoài. Tuy nhiên không phải máy nào cũng có voice này.
+  if (name.includes('google') && (name.includes('français') || name.includes('francais') || name.includes('french'))) score += 180;
+  if (name.includes('google')) score += 90;
+
+  // Các voice nữ / tự nhiên thường gặp trên macOS, Windows, Android, Chrome.
+  const premiumHints = [
+    'enhanced', 'premium', 'natural', 'neural', 'online', 'wavenet',
+    'audrey', 'amelie', 'amélie', 'aurelie', 'aurélie', 'denise', 'brigitte',
+    'hortense', 'julie', 'marie', 'celine', 'céline', 'lea', 'léa', 'florence',
+    'sylvie', 'claire', 'isabelle', 'virginie', 'google français', 'google francais'
+  ];
+  if (premiumHints.some(h => name.includes(h))) score += 100;
+
+  // Trừ điểm các tên thường là giọng nam để giữ cảm giác nữ/nhẹ hơn.
+  const maleHints = ['thomas', 'paul', 'henri', 'guillaume', 'antoine', 'nicolas', 'jacques', 'daniel', 'claude'];
+  if (maleHints.some(h => name.includes(h))) score -= 140;
+
+  // Không quá ưu tiên localService vì local voice đôi khi cứng; nếu có Google/network voice thì nên chọn.
+  if (voice?.localService && !name.includes('google')) score += 4;
+  return score;
+};
+
+const pickBestFreeFrenchVoice = async () => {
+  const voices = await getBrowserVoices();
+  const frenchVoices = voices.filter(v => String(v.lang || '').toLowerCase().startsWith('fr'));
+  if (!frenchVoices.length) return null;
+  return frenchVoices.sort((a, b) => scoreFrenchVoice(b) - scoreFrenchVoice(a))[0];
+};
+
+const playAudioUrlFree = (url, speedMode, setIsPlayingModel) => new Promise((resolve, reject) => {
+  if (!url) return reject(new Error('Missing audio URL'));
+  stopFreeModelAudio();
+  setIsPlayingModel(speedMode);
+
+  const audio = new Audio(url);
+  activeModelAudio = audio;
+  audio.preload = 'auto';
+  audio.playbackRate = 1.0;
+  audio.preservesPitch = true;
+  audio.mozPreservesPitch = true;
+  audio.webkitPreservesPitch = true;
+
+  audio.onended = () => {
+    if (activeModelAudio === audio) activeModelAudio = null;
+    setIsPlayingModel(false);
+    resolve();
+  };
+  audio.onerror = () => {
+    if (activeModelAudio === audio) activeModelAudio = null;
+    setIsPlayingModel(false);
+    reject(new Error('Cannot play audio URL'));
+  };
+
+  audio.play().catch((error) => {
+    if (activeModelAudio === audio) activeModelAudio = null;
+    setIsPlayingModel(false);
+    reject(error);
+  });
+});
+
+const splitFrenchForCalmTTS = (text = '') => {
+  const clean = normalizeFrenchPunctuation(text);
+  if (!clean) return [];
+
+  // Giữ câu ngắn liền mạch; câu dài chia theo dấu câu để browser TTS có nhịp nghỉ giống Google Dịch hơn.
+  const parts = clean
+    .split(/(?<=[.!?])\s+|(?<=;)\s+/)
+    .map(x => x.trim())
+    .filter(Boolean);
+
+  if (parts.length <= 1 && clean.length <= 95) return [clean];
+  if (parts.length > 1) return parts;
+
+  return clean
+    .split(/(?<=,)\s+/)
+    .map(x => x.trim())
+    .filter(Boolean)
+    .reduce((chunks, part) => {
+      const last = chunks[chunks.length - 1] || '';
+      if (!last || (last + ', ' + part).length > 85) chunks.push(part);
+      else chunks[chunks.length - 1] = `${last}, ${part}`;
+      return chunks;
+    }, []);
+};
+
+const speakOneFrenchUtterance = ({ text, voice, rate, pitch, volume }) => new Promise((resolve) => {
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = 'fr-FR';
+  if (voice) utterance.voice = voice;
+  utterance.rate = rate;
+  utterance.pitch = pitch;
+  utterance.volume = volume;
+  utterance.onend = resolve;
+  utterance.onerror = resolve;
+  try { window.speechSynthesis.speak(utterance); }
+  catch (_) { resolve(); }
+});
+
+const speakFrenchBrowserFree = async ({ textRaw, speedMode = 'normal', level = 'A1', setIsPlayingModel }) => {
+  if (!('speechSynthesis' in window)) {
+    alert('Trình duyệt này không hỗ trợ phát âm mẫu miễn phí.');
+    return;
+  }
+
+  const calmText = addGentleFrenchPauses(textRaw, speedMode);
+  if (!calmText) return;
+
+  stopFreeModelAudio();
+  const runId = activeBrowserTTSRunId;
+  setIsPlayingModel(speedMode);
+
+  const voice = await pickBestFreeFrenchVoice();
+
+  // Giọng điềm đạm hơn: giảm tốc độ và hạ pitch nhẹ.
+  // Không kéo quá chậm vì French browser TTS sẽ bị méo, đứt liaison và nuốt âm.
+  const normalRateMap = { A1: 0.76, A2: 0.80, B1: 0.86, B2: 0.90, C1: 0.94, C2: 0.96 };
+  const rate = speedMode === 'slow' ? 0.62 : (normalRateMap[level] || 0.86);
+  const pitch = 0.96;
+  const volume = 0.96;
+
+  const chunks = splitFrenchForCalmTTS(calmText);
+
+  for (const chunk of chunks) {
+    if (runId !== activeBrowserTTSRunId) return;
+    const spokenChunk = addGentleFrenchPauses(chunk, speedMode);
+    await speakOneFrenchUtterance({ text: spokenChunk, voice, rate, pitch, volume });
+    if (runId !== activeBrowserTTSRunId) return;
+
+    // Nghỉ cực ngắn giữa các cụm để câu bớt gấp, gần cảm giác Google Dịch hơn.
+    await new Promise(resolve => setTimeout(resolve, speedMode === 'slow' ? 180 : 90));
+  }
+
+  if (runId === activeBrowserTTSRunId) setIsPlayingModel(false);
+};
+
+const playFrenchModelAudioFree = async ({ textRaw, speedMode = 'normal', level = 'A1', setIsPlayingModel, audioUrl = '', slowAudioUrl = '' }) => {
+  const cleanText = addGentleFrenchPauses(textRaw, speedMode);
+  const preferredAudioUrl = speedMode === 'slow' ? slowAudioUrl : audioUrl;
+
+  // Miễn phí và chuẩn nhất: giáo viên/nguồn native cung cấp sẵn 2 file audio riêng.
+  // File chậm nên được thu hoặc tạo riêng, không phải kéo chậm file chuẩn.
+  if (preferredAudioUrl) {
+    try {
+      await playAudioUrlFree(preferredAudioUrl, speedMode, setIsPlayingModel);
+      return;
+    } catch (error) {
+      console.warn('Native audio URL failed, falling back to free browser TTS:', error);
+    }
+  }
+
+  // Nếu chưa có file audio riêng, dùng voice miễn phí tốt nhất có sẵn + nhịp câu điềm đạm.
+  await speakFrenchBrowserFree({ textRaw: cleanText, speedMode, level, setIsPlayingModel });
+};
 
 // --- HỆ THỐNG ĐA NGÔN NGỮ (i18n) ---
 const dict = {
@@ -545,7 +817,9 @@ function AdminPanel({ dbTopics, setDbTopics, dbShadowing, setDbShadowing, adminP
       hint: {
         fr: editingTopic.hint?.fr || '',
         vi: editingTopic.hint?.vi || '',
-        en: editingTopic.hint?.en || ''
+        en: editingTopic.hint?.en || '',
+        audioUrl: editingTopic.hint?.audioUrl || '',
+        slowAudioUrl: editingTopic.hint?.slowAudioUrl || ''
       },
       isPublished
     };
@@ -581,7 +855,9 @@ function AdminPanel({ dbTopics, setDbTopics, dbShadowing, setDbShadowing, adminP
       .map(row => ({
         fr: (row.fr || '').trim(),
         vi: (row.vi || '').trim(),
-        en: (row.en || '').trim()
+        en: (row.en || '').trim(),
+        audioUrl: (row.audioUrl || '').trim(),
+        slowAudioUrl: (row.slowAudioUrl || '').trim()
       }))
       .filter(row => row.fr || row.vi || row.en);
 
@@ -720,13 +996,15 @@ function AdminPanel({ dbTopics, setDbTopics, dbShadowing, setDbShadowing, adminP
     }
   };
 
-  const emptyShadowItem = () => ({ fr: '', vi: '', en: '' });
+  const emptyShadowItem = () => ({ fr: '', vi: '', en: '', audioUrl: '', slowAudioUrl: '' });
 
   const normalizeShadowItemsForForm = (items = []) => {
     const rows = items.map(i => ({
       fr: i.fr ?? i.jp ?? '',
       vi: i.vi ?? '',
-      en: i.en ?? ''
+      en: i.en ?? '',
+      audioUrl: i.audioUrl ?? i.audio_url ?? '',
+      slowAudioUrl: i.slowAudioUrl ?? i.slow_audio_url ?? ''
     }));
     return rows.length ? rows : [emptyShadowItem()];
   };
@@ -789,7 +1067,7 @@ function AdminPanel({ dbTopics, setDbTopics, dbShadowing, setDbShadowing, adminP
                 <>
                   <div className="flex justify-between items-center mb-6">
                     <h3 className="font-bold text-xl text-slate-800">Kho Chủ đề</h3>
-                    <button onClick={() => setEditingTopic({ id: 't_' + Date.now(), title: '', level: 'A1', req: '', isPublished: false, hint: { fr: '', vi: '', en: '' } })} className="bg-[#0055A4] text-white hover:bg-[#003F7D] px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 shadow-md"><Plus size={18} /> Thêm mới</button>
+                    <button onClick={() => setEditingTopic({ id: 't_' + Date.now(), title: '', level: 'A1', req: '', isPublished: false, hint: { fr: '', vi: '', en: '', audioUrl: '', slowAudioUrl: '' } })} className="bg-[#0055A4] text-white hover:bg-[#003F7D] px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 shadow-md"><Plus size={18} /> Thêm mới</button>
                   </div>
                   <div className="space-y-4">
                     {dbTopics.map(topic => (
@@ -832,6 +1110,10 @@ function AdminPanel({ dbTopics, setDbTopics, dbShadowing, setDbShadowing, adminP
                       Chỉ cần nhập câu tiếng Pháp tự nhiên. Hệ thống sẽ dùng trực tiếp văn bản tiếng Pháp để đọc mẫu và chấm điểm.
                     </div>
                     <div><label className="block text-xs font-bold mb-1">Tiếng Pháp</label><textarea value={editingTopic.hint.fr} onChange={e => setEditingTopic({ ...editingTopic, hint: { ...editingTopic.hint, fr: e.target.value } })} className="w-full p-2 border rounded-lg h-24" placeholder="VD: Bonjour, je m’appelle Marie." /></div>
+                    <div className="grid md:grid-cols-2 gap-3">
+                      <div><label className="block text-xs font-bold mb-1">Audio mẫu chuẩn miễn phí (URL, tuỳ chọn)</label><input type="url" value={editingTopic.hint.audioUrl || ''} onChange={e => setEditingTopic({ ...editingTopic, hint: { ...editingTopic.hint, audioUrl: e.target.value } })} className="w-full p-2 border rounded-lg" placeholder="/audio/fr/bonjour.mp3 hoặc link MP3" /></div>
+                      <div><label className="block text-xs font-bold mb-1">Audio mẫu chậm không méo (URL, tuỳ chọn)</label><input type="url" value={editingTopic.hint.slowAudioUrl || ''} onChange={e => setEditingTopic({ ...editingTopic, hint: { ...editingTopic.hint, slowAudioUrl: e.target.value } })} className="w-full p-2 border rounded-lg" placeholder="/audio/fr/bonjour_slow.mp3 hoặc link MP3" /></div>
+                    </div>
                     <div><label className="block text-xs font-bold mb-1">Tiếng Việt</label><input type="text" value={editingTopic.hint.vi} onChange={e => setEditingTopic({ ...editingTopic, hint: { ...editingTopic.hint, vi: e.target.value } })} className="w-full p-2 border rounded-lg" /></div>
                     <div><label className="block text-xs font-bold mb-1">Tiếng Anh (Cho giao diện EN)</label><input type="text" value={editingTopic.hint.en || ''} onChange={e => setEditingTopic({ ...editingTopic, hint: { ...editingTopic.hint, en: e.target.value } })} className="w-full p-2 border rounded-lg" /></div>
                   </div>
@@ -906,6 +1188,16 @@ function AdminPanel({ dbTopics, setDbTopics, dbShadowing, setDbShadowing, adminP
                             <div>
                               <label className="block text-xs font-bold mb-1 text-slate-700">Tiếng Anh</label>
                               <input value={row.en} onChange={e => updateShadowItemRow(index, 'en', e.target.value)} className="w-full p-3 border border-slate-300 rounded-xl focus:border-[#0055A4] outline-none" placeholder={editingShadow.type === 'vocab' ? 'Hello' : 'My name is Marie.'} />
+                            </div>
+                          </div>
+                          <div className="grid md:grid-cols-2 gap-3 mt-3">
+                            <div>
+                              <label className="block text-xs font-bold mb-1 text-slate-700">Audio mẫu chuẩn miễn phí (URL, tuỳ chọn)</label>
+                              <input value={row.audioUrl || ''} onChange={e => updateShadowItemRow(index, 'audioUrl', e.target.value)} className="w-full p-3 border border-slate-300 rounded-xl focus:border-[#0055A4] outline-none" placeholder="/audio/fr/bonjour.mp3 hoặc link MP3" />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-bold mb-1 text-slate-700">Audio mẫu chậm không méo (URL, tuỳ chọn)</label>
+                              <input value={row.slowAudioUrl || ''} onChange={e => updateShadowItemRow(index, 'slowAudioUrl', e.target.value)} className="w-full p-3 border border-slate-300 rounded-xl focus:border-[#0055A4] outline-none" placeholder="/audio/fr/bonjour_slow.mp3 hoặc link MP3" />
                             </div>
                           </div>
                           <div className="mt-3 text-xs text-slate-500 font-mono bg-white border border-slate-200 rounded-lg p-2">
@@ -1654,27 +1946,15 @@ function FreeAndTopicMode({ type, studentName, onRequireName, dbTopics }) {
 
   useEffect(() => { if (!studentName) onRequireName(); }, []);
 
-  const playModelAudio = (textRaw, speedMode = 'normal') => {
-    if (!('speechSynthesis' in window)) { alert("TTS not supported in your browser."); return; }
-
-    const cleanText = textRaw || '';
-    setIsPlayingModel(speedMode);
-
-    const utterance = new SpeechSynthesisUtterance(cleanText);
-    utterance.lang = 'fr-FR';
-
-    if (speedMode === 'slow') {
-      utterance.rate = 0.35;
-    } else {
-      const rateMap = { 'A1': 0.75, 'A2': 0.85, 'B1': 0.95, 'B2': 1.0, 'C1': 1.05, 'C2': 1.1 };
-      utterance.rate = currentTopic ? (rateMap[currentTopic.level] || 1.0) : 1.0;
-    }
-
-    utterance.onend = () => setIsPlayingModel(false);
-    utterance.onerror = () => setIsPlayingModel(false);
-
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(utterance);
+  const playModelAudio = async (textRaw, speedMode = 'normal', audioSource = {}) => {
+    await playFrenchModelAudioFree({
+      textRaw,
+      speedMode,
+      level: currentTopic?.level || 'A1',
+      setIsPlayingModel,
+      audioUrl: audioSource?.audioUrl || '',
+      slowAudioUrl: audioSource?.slowAudioUrl || ''
+    });
   };
 
   const handleAudioReady = (file, url, text, isFile) => {
@@ -1799,10 +2079,10 @@ function FreeAndTopicMode({ type, studentName, onRequireName, dbTopics }) {
                         <BookA size={16} className="text-blue-500" /> {t('hintModel')}
                       </span>
                       <div className="flex gap-2">
-                        <button onClick={() => playModelAudio(currentTopic.hint.fr, 'slow')} disabled={isPlayingModel !== false} className={`px-3 py-1.5 text-xs font-bold rounded-full border transition-all flex items-center gap-1 ${isPlayingModel === 'slow' ? 'bg-blue-50 border-blue-400 text-blue-600 animate-pulse' : 'bg-white border-slate-300 hover:border-[#0055A4] hover:text-[#0055A4] text-slate-600'}`}>
+                        <button onClick={() => playModelAudio(currentTopic.hint.fr, 'slow', currentTopic.hint)} disabled={isPlayingModel !== false} className={`px-3 py-1.5 text-xs font-bold rounded-full border transition-all flex items-center gap-1 ${isPlayingModel === 'slow' ? 'bg-blue-50 border-blue-400 text-blue-600 animate-pulse' : 'bg-white border-slate-300 hover:border-[#0055A4] hover:text-[#0055A4] text-slate-600'}`}>
                           <Volume1 size={14} /> {t('listenSlow')}
                         </button>
-                        <button onClick={() => playModelAudio(currentTopic.hint.fr, 'normal')} disabled={isPlayingModel !== false} className={`px-3 py-1.5 text-xs font-bold rounded-full border transition-all flex items-center gap-1 ${isPlayingModel === 'normal' ? 'bg-blue-50 border-blue-400 text-blue-600 animate-pulse' : 'bg-white border-slate-300 hover:border-[#0055A4] hover:text-[#0055A4] text-slate-600'}`}>
+                        <button onClick={() => playModelAudio(currentTopic.hint.fr, 'normal', currentTopic.hint)} disabled={isPlayingModel !== false} className={`px-3 py-1.5 text-xs font-bold rounded-full border transition-all flex items-center gap-1 ${isPlayingModel === 'normal' ? 'bg-blue-50 border-blue-400 text-blue-600 animate-pulse' : 'bg-white border-slate-300 hover:border-[#0055A4] hover:text-[#0055A4] text-slate-600'}`}>
                           <Volume2 size={14} /> {t('listenNormal')}
                         </button>
                       </div>
@@ -1898,7 +2178,7 @@ function ShadowingMode({ studentName, onRequireName, dbShadowing }) {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
       if (recordedUrl) URL.revokeObjectURL(recordedUrl);
-      window.speechSynthesis?.cancel?.();
+      stopFreeModelAudio();
     };
   }, [recordedUrl]);
 
@@ -1923,27 +2203,15 @@ function ShadowingMode({ studentName, onRequireName, dbShadowing }) {
     setSetupStep(false);
   };
 
-  const playModelAudio = (textRaw, speedMode = 'normal') => {
-    if (!('speechSynthesis' in window)) { return; }
-
-    const cleanText = textRaw || '';
-    setIsPlayingModel(speedMode);
-
-    const utterance = new SpeechSynthesisUtterance(cleanText);
-    utterance.lang = 'fr-FR';
-
-    if (speedMode === 'slow') {
-      utterance.rate = 0.35;
-    } else {
-      const rateMap = { 'A1': 0.75, 'A2': 0.85, 'B1': 0.95, 'B2': 1.0, 'C1': 1.05, 'C2': 1.1 };
-      utterance.rate = rateMap[level] || 1.0;
-    }
-
-    utterance.onend = () => setIsPlayingModel(false);
-    utterance.onerror = () => setIsPlayingModel(false);
-
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(utterance);
+  const playModelAudio = async (textRaw, speedMode = 'normal', audioSource = {}) => {
+    await playFrenchModelAudioFree({
+      textRaw,
+      speedMode,
+      level,
+      setIsPlayingModel,
+      audioUrl: audioSource?.audioUrl || '',
+      slowAudioUrl: audioSource?.slowAudioUrl || ''
+    });
   };
 
   const createRecorder = (stream) => {
@@ -2092,11 +2360,11 @@ function ShadowingMode({ studentName, onRequireName, dbShadowing }) {
             </div>
 
             <div className="flex gap-2 shrink-0 self-start mt-2 sm:mt-0">
-              <button onClick={() => playModelAudio(currentItem.fr, 'slow')} disabled={isPlayingModel !== false} className={`flex flex-col items-center justify-center w-14 h-14 rounded-full shadow-md transition-all border-2 ${isPlayingModel === 'slow' ? 'bg-blue-50 border-blue-400 text-blue-600 animate-pulse' : 'bg-white border-slate-200 hover:border-[#0055A4] hover:text-[#0055A4] text-slate-700'}`} title="Nghe đọc chậm">
+              <button onClick={() => playModelAudio(currentItem.fr, 'slow', currentItem)} disabled={isPlayingModel !== false} className={`flex flex-col items-center justify-center w-14 h-14 rounded-full shadow-md transition-all border-2 ${isPlayingModel === 'slow' ? 'bg-blue-50 border-blue-400 text-blue-600 animate-pulse' : 'bg-white border-slate-200 hover:border-[#0055A4] hover:text-[#0055A4] text-slate-700'}`} title="Nghe đọc chậm">
                 <Volume1 size={20} className={isPlayingModel === 'slow' ? "opacity-50" : ""} />
                 <span className="text-[9px] font-bold mt-0.5 uppercase">{t('listenSlow')}</span>
               </button>
-              <button onClick={() => playModelAudio(currentItem.fr, 'normal')} disabled={isPlayingModel !== false} className={`flex flex-col items-center justify-center w-14 h-14 rounded-full shadow-md transition-all border-2 ${isPlayingModel === 'normal' ? 'bg-blue-50 border-blue-400 text-blue-600 animate-pulse' : 'bg-white border-slate-200 hover:border-[#0055A4] hover:text-[#0055A4] text-slate-700'}`} title="Nghe đọc chuẩn">
+              <button onClick={() => playModelAudio(currentItem.fr, 'normal', currentItem)} disabled={isPlayingModel !== false} className={`flex flex-col items-center justify-center w-14 h-14 rounded-full shadow-md transition-all border-2 ${isPlayingModel === 'normal' ? 'bg-blue-50 border-blue-400 text-blue-600 animate-pulse' : 'bg-white border-slate-200 hover:border-[#0055A4] hover:text-[#0055A4] text-slate-700'}`} title="Nghe đọc chuẩn">
                 <Volume2 size={20} className={isPlayingModel === 'normal' ? "opacity-50" : ""} />
                 <span className="text-[9px] font-bold mt-0.5 uppercase">{t('listenNormal')}</span>
               </button>
