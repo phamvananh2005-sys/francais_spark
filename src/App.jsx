@@ -2157,8 +2157,8 @@ function ShadowingMode({ studentName, onRequireName, dbShadowing }) {
                 <h4 className="font-bold text-slate-800 mb-2 text-lg">{lang === 'en' ? 'Recording saved' : 'Đã lưu bản thu âm'}</h4>
                 <p className="text-sm text-slate-700 mb-4 leading-relaxed font-medium">
                   {lang === 'en'
-                    ? 'Play back your recording and compare it with the model. This Shadowing mode does not use AI grading.'
-                    : 'Hãy nghe lại bản thu của mình và so sánh với mẫu. Phần Shadowing này không dùng AI chấm điểm.'}
+                    ? 'Listen to your recording again, compare it with the sample, then practice it again or move on to the next item.'
+                    : 'Hãy nghe lại bản thu của mình, so sánh với mẫu, rồi luyện lại hoặc chuyển sang mục tiếp theo.'}
                 </p>
                 <div className="bg-white/60 p-2 rounded-lg inline-block w-full">
                   <audio controls src={recordedUrl} className="h-10 w-full rounded" />
