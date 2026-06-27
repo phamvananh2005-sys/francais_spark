@@ -29,7 +29,7 @@ const dict = {
     received: "Đã nhận",
     step2: "2. Chọn chế độ luyện tập:",
     shadowingTitle: "Shadowing",
-    shadowingDesc: "Luyện nghe mẫu và bắt chước theo từ vựng hoặc câu mẫu tiếng Pháp. Học sinh có thể thu âm, nghe lại và luyện đến khi phát âm tự nhiên hơn.",
+    shadowingDesc: "Luyện phát âm theo từ vựng hoặc câu mẫu tiếng Pháp. AI đánh giá độ rõ, âm mũi, âm r, nhịp điệu và độ tự nhiên.",
     topicTitle: "Nói theo chủ đề",
     topicDesc: "Nói theo chủ đề. AI đánh giá độ trôi chảy, bám sát nội dung, ngữ pháp, từ vựng và tính tự nhiên của tiếng Pháp.",
     freeTitle: "Nói tự do",
@@ -55,7 +55,7 @@ const dict = {
     chooseOther: "Chọn bài khác",
     listenSlow: "Chậm",
     listenNormal: "Chuẩn",
-    yourTurn: "Nghe mẫu, thu âm lại phần đọc của bạn, rồi nghe lại để tự so sánh với mẫu.",
+    yourTurn: "Sử dụng nút Thu âm trực tiếp và bắt chước lại để AI đánh giá phát âm tiếng Pháp.",
     uploadFile: "Tải file lên",
     uploadWarn: "Hệ thống sẽ không thể nhận diện lỗi phát âm chi tiết bằng cách này.",
     recDirect: "Thu âm trực tiếp",
@@ -64,7 +64,7 @@ const dict = {
     recommended: "Khuyên dùng",
     aiEvaluating: "AI đang thẩm định và viết nhận xét...",
     waitMsg: "Quá trình đánh giá ngôn ngữ mất vài giây nhé!",
-    grading: "Đang xử lý bản ghi âm...",
+    grading: "AI đang phân tích phát âm tiếng Pháp...",
     tryAgain: "Thử lại câu này",
     nextItem: "Chuyển tiếp",
     analysis: "Phân tích chi tiết từ AI:",
@@ -110,7 +110,7 @@ const dict = {
     received: "Received",
     step2: "2. Select training mode:",
     shadowingTitle: "Shadowing",
-    shadowingDesc: "Listen to the model and imitate French vocabulary or sentences. Record yourself, play it back, and practise until it sounds more natural.",
+    shadowingDesc: "Imitate French vocabulary or sentences. AI evaluates pronunciation, nasal vowels, French r, rhythm, and naturalness.",
     topicTitle: "Topic Speaking",
     topicDesc: "Present on a topic. Multi-dimensional AI evaluation of fluency, relevance, grammar, vocabulary, and natural French delivery.",
     freeTitle: "Free Speaking",
@@ -136,7 +136,7 @@ const dict = {
     chooseOther: "Choose another lesson",
     listenSlow: "Slow",
     listenNormal: "Normal",
-    yourTurn: "Listen to the model, record yourself, then play back your recording to compare with the sample.",
+    yourTurn: "Use Direct Record and imitate the sample for AI French pronunciation check.",
     uploadFile: "Upload File",
     uploadWarn: "System cannot provide detailed pronunciation errors via file upload.",
     recDirect: "Direct Record",
@@ -145,7 +145,7 @@ const dict = {
     recommended: "Recommended",
     aiEvaluating: "AI is evaluating and generating feedback...",
     waitMsg: "Linguistic analysis takes a few seconds!",
-    grading: "Processing your recording...",
+    grading: "AI is analyzing French pronunciation...",
     tryAgain: "Try Again",
     nextItem: "Next",
     analysis: "AI Detailed Analysis:",
@@ -1869,13 +1869,9 @@ function ShadowingMode({ studentName, onRequireName, dbShadowing }) {
 
   const [recordedFile, setRecordedFile] = useState(null);
   const [recordedUrl, setRecordedUrl] = useState(null);
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordingTime, setRecordingTime] = useState(0);
+  const [sentenceResult, setSentenceResult] = useState(null);
+  const [isEvaluating, setIsEvaluating] = useState(false);
   const [isPlayingModel, setIsPlayingModel] = useState(false);
-
-  const mediaRecorderRef = useRef(null);
-  const chunksRef = useRef([]);
-  const timerRef = useRef(null);
 
   useEffect(() => { if (!studentName) onRequireName(); }, []);
 
@@ -1894,14 +1890,6 @@ function ShadowingMode({ studentName, onRequireName, dbShadowing }) {
     }
   }, [level, dbShadowing, type]);
 
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-      if (recordedUrl) URL.revokeObjectURL(recordedUrl);
-      window.speechSynthesis?.cancel?.();
-    };
-  }, [recordedUrl]);
-
   const lessons = dbShadowing.filter(item => {
     const published = item.isPublished ?? item.ispublished;
     const itemLevel = String(item.level || '').trim().toUpperCase();
@@ -1910,16 +1898,9 @@ function ShadowingMode({ studentName, onRequireName, dbShadowing }) {
     return isPublished && itemLevel === level && itemType === type;
   });
 
-  const resetRecording = () => {
-    setRecordedFile(null);
-    if (recordedUrl) URL.revokeObjectURL(recordedUrl);
-    setRecordedUrl(null);
-  };
-
   const startPractice = (lesson) => {
     setSelectedLesson(lesson);
     setCurrentIndex(0);
-    resetRecording();
     setSetupStep(false);
   };
 
@@ -1946,61 +1927,66 @@ function ShadowingMode({ studentName, onRequireName, dbShadowing }) {
     window.speechSynthesis.speak(utterance);
   };
 
-  const createRecorder = (stream) => {
-    if (MediaRecorder.isTypeSupported('audio/mp4')) return new MediaRecorder(stream, { mimeType: 'audio/mp4' });
-    if (MediaRecorder.isTypeSupported('audio/webm')) return new MediaRecorder(stream, { mimeType: 'audio/webm' });
-    return new MediaRecorder(stream);
-  };
+  const handleAudioReady = async (file, url, transcriptStr, isFile) => {
+    setRecordedFile(file);
+    setRecordedUrl(url);
+    setIsEvaluating(true);
 
-  const startRecording = async () => {
     try {
-      resetRecording();
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = createRecorder(stream);
-      chunksRef.current = [];
+      // Đợi 0.5s để UI "Đang phân tích" kịp hiển thị trước khi gọi AI
+      await new Promise(r => setTimeout(r, 500));
 
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data);
-      };
+      let res;
+      if (isFile) {
+        res = {
+          score: '7.5', level: lang === 'en' ? 'Fair' : 'Khá',
+          criteria: { [t('cPronunciation')]: '7.5', [t('cFluency')]: '7.5' },
+          feedback: lang === 'en' ? "Use Direct Record for accurate evaluation." : "[CHẾ ĐỘ TẢI FILE]\nHệ thống không thể bóc tách lỗi chi tiết từ file ghi âm tải lên. Hãy dùng Thu âm trực tiếp."
+        };
+      } else {
+        const currentItem = selectedLesson.items[currentIndex];
 
-      recorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: recorder.mimeType });
-        const file = new File([blob], 'shadowing-recording.mp4', { type: blob.type });
-        setRecordedFile(file);
-        setRecordedUrl(URL.createObjectURL(blob));
-        clearInterval(timerRef.current);
-        setRecordingTime(0);
-      };
-
-      recorder.start();
-      mediaRecorderRef.current = recorder;
-      setIsRecording(true);
-      timerRef.current = setInterval(() => setRecordingTime(prev => prev + 1), 1000);
+        // SỬA LỖI: Cho phép nhận diện cả những từ vựng có 1 từ (length === 0 mới báo lỗi)
+        if (!transcriptStr || transcriptStr.trim().length === 0) {
+          res = {
+            score: '2.0', level: lang === 'en' ? 'Needs Practice' : 'Cần luyện tập thêm',
+            criteria: { [t('cPronunciation')]: '2.0', [t('cFluency')]: '2.0' },
+            feedback: lang === 'en' ? 'The system could not clearly recognize what you said. Please check your microphone and speak louder.' : 'Hệ thống không nhận diện rõ bạn nói gì. Vui lòng kiểm tra Micro và thử nói lớn hơn nhé.'
+          };
+        } else {
+          const apiRes = await evaluateWithGemini(transcriptStr, currentItem.fr, level, type, lang);
+          if (apiRes) {
+            res = {
+              score: apiRes.score,
+              level: apiRes.level,
+              criteria: {
+                [t('cPronunciation')]: apiRes.pronunciation_score || "0.0",
+                [t('cFluency')]: apiRes.fluency_score || "0.0",
+                [t('cNaturalness')]: apiRes.naturalness_score || "0.0",
+                [t('cPronunRhythm')]: apiRes.intonation_rhythm_score || "0.0",
+                [t('cClarity')]: apiRes.comprehensibility_score || "0.0",
+                [t('cContentAccuracy')]: apiRes.accuracy_score || "0.0"
+              },
+              feedback: apiRes.feedback
+            };
+          } else {
+            // Fallback an toàn nếu API quá tải
+            res = generateGradingResultFallback(transcriptStr, currentItem.fr, level, type, lang, t);
+          }
+        }
+      }
+      setSentenceResult(res);
     } catch (error) {
-      console.error('Recording error:', error);
-      alert(lang === 'en' ? 'Cannot access microphone.' : 'Không thể truy cập microphone.');
+      console.error("Shadowing Error:", error);
+      const currentItem = selectedLesson.items[currentIndex];
+      setSentenceResult(generateGradingResultFallback(transcriptStr, currentItem.fr, level, type, lang, t));
+    } finally {
+      setIsEvaluating(false);
     }
   };
 
-  const stopRecording = () => {
-    const recorder = mediaRecorderRef.current;
-    if (!recorder) return;
-    recorder.stop();
-    recorder.stream.getTracks().forEach(track => track.stop());
-    setIsRecording(false);
-  };
-
-  const handleFileChange = (e) => {
-    if (!e.target.files?.length) return;
-    const file = e.target.files[0];
-    resetRecording();
-    setRecordedFile(file);
-    setRecordedUrl(URL.createObjectURL(file));
-    e.target.value = '';
-  };
-
   const nextItem = () => {
-    resetRecording();
+    setRecordedFile(null); setRecordedUrl(null); setSentenceResult(null);
     setCurrentIndex(prev => prev + 1);
   };
 
@@ -2104,70 +2090,42 @@ function ShadowingMode({ studentName, onRequireName, dbShadowing }) {
           </div>
         </div>
 
-        {!recordedFile && (
+        {!recordedFile && !isEvaluating && (
           <div className="animate-in fade-in">
             <div className="bg-blue-50 text-blue-800 p-3 rounded-lg mb-4 text-sm font-medium border border-blue-200">
               <Info size={16} className="inline mr-1" />
               {t('yourTurn')}
             </div>
-
-            <div className="grid md:grid-cols-2 gap-4">
-              <label className={`border-2 border-dashed rounded-2xl p-6 flex flex-col items-center justify-center cursor-pointer transition-all duration-200 group bg-white border-slate-300 hover:border-[#0055A4]/50 ${isRecording ? 'opacity-50 pointer-events-none' : ''}`}>
-                <input type="file" accept="audio/*,video/*" className="hidden" onChange={handleFileChange} />
-                <Upload size={28} className="text-[#0055A4] mb-3 group-hover:-translate-y-1 transition-transform" />
-                <h3 className="font-bold text-slate-800">{t('uploadFile')}</h3>
-                <p className="text-xs text-slate-500 mt-1">{lang === 'en' ? 'Upload a recording to play it back.' : 'Tải bản ghi âm để nghe lại.'}</p>
-              </label>
-
-              <div className={`border-2 rounded-2xl p-6 flex flex-col items-center justify-center transition-all duration-200 ${isRecording ? 'border-[#0055A4] bg-[#EAF4FF] shadow-inner' : 'border-[#0055A4]/30 bg-blue-50/30 relative overflow-hidden'}`}>
-                {isRecording ? (
-                  <>
-                    <div className="flex items-center gap-3 mb-4">
-                      <span className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></span>
-                      <span className="font-mono text-lg font-bold text-[#0055A4]">
-                        {Math.floor(recordingTime / 60).toString().padStart(2, '0')}:{(recordingTime % 60).toString().padStart(2, '0')}
-                      </span>
-                    </div>
-                    <button onClick={stopRecording} className="bg-red-500 hover:bg-red-600 text-white p-3 rounded-full shadow-lg flex items-center justify-center gap-2 px-6 font-bold text-sm transition-transform active:scale-95">
-                      <Square size={16} fill="currentColor" /> {t('stopRec')}
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <Mic size={28} className="text-[#0055A4] mb-3" />
-                    <h3 className="font-bold text-slate-800 mb-2">{t('recDirect')}</h3>
-                    <button onClick={startRecording} className="bg-[#0055A4] hover:bg-[#003F7D] text-white px-4 py-1.5 rounded-full text-xs font-bold transition-colors">
-                      {lang === 'en' ? 'Start recording' : 'Bắt đầu thu âm'}
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
+            <AudioInput onAudioReady={handleAudioReady} />
           </div>
         )}
 
-        {recordedFile && recordedUrl && (
+        {isEvaluating && (
+          <div className="py-8 flex flex-col items-center">
+            <Activity size={48} className="text-[#0055A4] animate-bounce mb-4" />
+            <p className="font-medium text-slate-600">{t('grading')}</p>
+          </div>
+        )}
+
+        {sentenceResult && !isEvaluating && (
           <div className="animate-in slide-in-from-bottom-4">
-            <div className="p-6 rounded-2xl border shadow-sm bg-blue-50 border-blue-200 mb-6 flex flex-col md:flex-row gap-6 items-center md:items-start">
-              <div className="w-20 h-20 rounded-full flex items-center justify-center shadow-inner shrink-0 bg-[#0055A4] text-white">
-                <CheckCircle2 size={38} />
+            <div className={`p-6 rounded-2xl border shadow-sm ${parseFloat(sentenceResult.score) >= 8.0 ? 'bg-green-50 border-green-200' : parseFloat(sentenceResult.score) >= 6.0 ? 'bg-yellow-50 border-yellow-200' : 'bg-red-50 border-red-200'} mb-6 flex flex-col md:flex-row gap-6 items-center md:items-start`}>
+
+              <div className={`w-24 h-24 rounded-full flex items-center justify-center flex-col shadow-inner shrink-0 ${parseFloat(sentenceResult.score) >= 8.0 ? 'bg-green-500 text-white' : parseFloat(sentenceResult.score) >= 6.0 ? 'bg-yellow-500 text-white' : 'bg-red-500 text-white'}`}>
+                <span className="font-black text-3xl">{sentenceResult.score}</span>
               </div>
 
               <div className="flex-1 w-full text-center md:text-left">
-                <h4 className="font-bold text-slate-800 mb-2 text-lg">{lang === 'en' ? 'Recording saved' : 'Đã lưu bản thu âm'}</h4>
-                <p className="text-sm text-slate-700 mb-4 leading-relaxed font-medium">
-                  {lang === 'en'
-                    ? 'Play back your recording and compare it with the model. This Shadowing mode does not use AI grading.'
-                    : 'Hãy nghe lại bản thu của mình và so sánh với mẫu. Phần Shadowing này không dùng AI chấm điểm.'}
-                </p>
-                <div className="bg-white/60 p-2 rounded-lg inline-block w-full">
+                <h4 className="font-bold text-slate-800 mb-2 text-lg">{t('analysis')}</h4>
+                <p className="text-sm text-slate-700 mb-4 leading-relaxed font-medium">{sentenceResult.feedback}</p>
+                <div className="bg-white/50 p-2 rounded-lg inline-block w-full">
                   <audio controls src={recordedUrl} className="h-10 w-full rounded" />
                 </div>
               </div>
             </div>
 
             <div className="flex flex-col sm:flex-row gap-4 mt-8 pt-6 border-t border-slate-200">
-              <button onClick={resetRecording} className="flex-1 py-4 bg-white border border-slate-300 hover:border-[#0055A4] hover:text-[#0055A4] text-slate-700 font-bold rounded-xl transition-colors flex items-center justify-center gap-2">
+              <button onClick={() => { setRecordedFile(null); setSentenceResult(null); }} className="flex-1 py-4 bg-white border border-slate-300 hover:border-[#0055A4] hover:text-[#0055A4] text-slate-700 font-bold rounded-xl transition-colors flex items-center justify-center gap-2">
                 <RefreshCcw size={18} /> {t('tryAgain')}
               </button>
               <button onClick={nextItem} className="flex-1 py-4 bg-[#0055A4] hover:bg-[#003F7D] text-white font-black tracking-wide rounded-xl transition-colors flex items-center justify-center gap-2 shadow-lg shadow-blue-500/30">
