@@ -372,7 +372,16 @@ const dict = {
     cVocabRichness: "Từ vựng phong phú",
     cNaturalness: "Độ tự nhiên",
     cVocab: "Từ vựng",
-    cIdeaDev: "Khả năng phát triển ý"
+    cIdeaDev: "Khả năng phát triển ý",
+    cVowelConsonant: "Nguyên âm & phụ âm",
+    cNasalVowel: "Nguyên âm mũi",
+    cSilentLetters: "Âm câm",
+    cFrenchSounds: "Âm đặc trưng tiếng Pháp",
+    cLiaison: "Liaison / nối âm",
+    cIntonation: "Ngữ điệu",
+    cRhythm: "Rhythm / nhịp câu",
+    cSimilarity: "Độ giống mẫu",
+    cContent: "Nội dung đủ ý"
   },
   en: {
     welcome: "Welcome to Français Spark",
@@ -453,7 +462,16 @@ const dict = {
     cVocabRichness: "Lexical Richness",
     cNaturalness: "Naturalness",
     cVocab: "Vocabulary",
-    cIdeaDev: "Idea Development"
+    cIdeaDev: "Idea Development",
+    cVowelConsonant: "Vowels & Consonants",
+    cNasalVowel: "Nasal Vowels",
+    cSilentLetters: "Silent Letters",
+    cFrenchSounds: "French Sounds",
+    cLiaison: "Liaison / Linking",
+    cIntonation: "Intonation",
+    cRhythm: "Rhythm",
+    cSimilarity: "Similarity",
+    cContent: "Content Completeness"
   }
 };
 
@@ -1230,7 +1248,8 @@ function generateGradingResultFallback(transcript, expectedRawText, level, mode,
 
   const commonFrenchMarkers = [
     'je', 'tu', 'il', 'elle', 'nous', 'vous', 'ils', 'elles', 'le', 'la', 'les', 'un', 'une',
-    'des', 'du', 'de', 'bonjour', 'merci', 'suis', 'est', 'sont', 'avec', 'pour', 'dans', 'mon', 'ma'
+    'des', 'du', 'de', 'bonjour', 'merci', 'suis', 'est', 'sont', 'avec', 'pour', 'dans', 'mon', 'ma',
+    'parce', 'que', 'donc', 'mais', 'aime', 'famille', 'école', 'ecole'
   ];
   const markerCount = commonFrenchMarkers.filter(w => (transcript || '').toLowerCase().includes(w)).length;
   const likelyNonFrench = cleanTranscript.length > 0 && markerCount === 0 && mode !== 'vocab';
@@ -1238,17 +1257,26 @@ function generateGradingResultFallback(transcript, expectedRawText, level, mode,
   if (likelyNonFrench) {
     return {
       score: '3.0',
-      level: lang === 'en' ? 'Needs Practice' : 'Cần luyện tập thêm',
+      level: lang === 'en' ? 'Needs Practice' : 'Cần cố gắng',
       estimated_cefr: level || 'A1',
-      criteria: {
-        [t('cPronunciation')]: '3.0',
-        [t('cFluency')]: '3.0',
-        [t('cNaturalness')]: '2.5',
-        [t('cClarity')]: '3.0'
-      },
+      criteria: mode === 'free'
+        ? {
+            [t('cPronunciation')]: '3.0',
+            [t('cFluency')]: '2.5',
+            [t('cGrammar')]: '2.0',
+            [t('cVocab')]: '2.0',
+            [t('cIdeaDev')]: '2.0'
+          }
+        : {
+            [t('cPronunciation')]: '3.0',
+            [t('cGrammar')]: '2.0',
+            [t('cVocab')]: '2.0',
+            [t('cContent')]: '2.0',
+            [t('cFluency')]: '2.5'
+          },
       feedback: lang === 'en'
-        ? 'The response was not primarily in French, so the system could not evaluate French pronunciation accurately. Please try again in French.'
-        : 'Bài nói chưa phải chủ yếu bằng tiếng Pháp, nên hệ thống chưa thể đánh giá chính xác phát âm tiếng Pháp. Bạn vui lòng thử lại bằng tiếng Pháp nhé.'
+        ? 'Strengths\n✓ The recording was received.\n\nErrors to fix\n✗ The response was not primarily in French, so the system could not evaluate French pronunciation accurately.\n\nPractice suggestions\n→ Please record again using French sentences only.'
+        : 'Điểm mạnh\n✓ Hệ thống đã nhận được bản ghi âm của bạn.\n\nLỗi cần sửa\n✗ Bài nói chưa phải chủ yếu bằng tiếng Pháp, nên hệ thống chưa thể đánh giá chính xác phát âm, ngữ pháp và độ trôi chảy tiếng Pháp.\n\nGợi ý luyện tập\n→ Bạn hãy thu lại bằng câu tiếng Pháp hoàn chỉnh, tránh dùng tiếng Việt hoặc tiếng Anh trong bài nói.'
     };
   }
 
@@ -1270,19 +1298,51 @@ function generateGradingResultFallback(transcript, expectedRawText, level, mode,
     else estimatedLevel = 'A1';
   }
 
-  return {
-    score: clamp(finalScore),
-    level: lang === 'en' ? (finalScore >= 8 ? 'Good' : finalScore >= 6 ? 'Fair' : 'Needs Practice') : (finalScore >= 8 ? 'Giỏi' : finalScore >= 6 ? 'Khá' : 'Cần luyện thêm'),
-    estimated_cefr: estimatedLevel,
-    criteria: {
-      [t('cPronunciation')]: clamp(finalScore - 0.2),
-      [t('cFluency')]: clamp(finalScore),
-      [t('cNaturalness')]: clamp(finalScore - 0.1),
-      [t('cPronunRhythm')]: clamp(finalScore - 0.2)
+  const score = clamp(finalScore);
+  const levelName = lang === 'en'
+    ? (finalScore >= 9 ? 'Excellent' : finalScore >= 8 ? 'Good' : finalScore >= 6 ? 'Fair' : 'Needs Practice')
+    : (finalScore >= 9 ? 'Xuất sắc' : finalScore >= 8 ? 'Giỏi' : finalScore >= 6 ? 'Khá' : 'Cần cố gắng');
+
+  const criteriaByMode = {
+    vocab: {
+      [t('cVowelConsonant')]: clamp(finalScore),
+      [t('cNasalVowel')]: clamp(finalScore - 0.2),
+      [t('cSilentLetters')]: clamp(finalScore - 0.2),
+      [t('cFrenchSounds')]: clamp(finalScore - 0.1),
+      [t('cNaturalness')]: clamp(finalScore - 0.1)
     },
+    sentence: {
+      [t('cPronunciation')]: clamp(finalScore - 0.1),
+      [t('cLiaison')]: clamp(finalScore - 0.2),
+      [t('cIntonation')]: clamp(finalScore - 0.1),
+      [t('cRhythm')]: clamp(finalScore - 0.1),
+      [t('cSimilarity')]: clamp(finalScore)
+    },
+    topic: {
+      [t('cPronunciation')]: clamp(finalScore - 0.1),
+      [t('cGrammar')]: clamp(finalScore - 0.2),
+      [t('cVocab')]: clamp(finalScore - 0.1),
+      [t('cContent')]: clamp(finalScore),
+      [t('cFluency')]: clamp(finalScore - 0.1),
+      [t('cTopicRelevance')]: clamp(finalScore)
+    },
+    free: {
+      [t('cPronunciation')]: clamp(finalScore - 0.1),
+      [t('cFluency')]: clamp(finalScore),
+      [t('cGrammar')]: clamp(finalScore - 0.2),
+      [t('cVocab')]: clamp(finalScore - 0.1),
+      [t('cIdeaDev')]: clamp(finalScore - 0.1)
+    }
+  };
+
+  return {
+    score,
+    level: levelName,
+    estimated_cefr: estimatedLevel,
+    criteria: criteriaByMode[mode] || criteriaByMode.free,
     feedback: lang === 'en'
-      ? 'This is a basic fallback evaluation. Use direct recording and AI grading for detailed French pronunciation feedback.'
-      : 'Đây là đánh giá cơ bản dự phòng. Hãy dùng thu âm trực tiếp và AI để nhận phân tích chi tiết hơn về phát âm tiếng Pháp.'
+      ? 'Strengths\n✓ The answer was recognized and can be understood overall.\n\nErrors to fix\n△ This is a fallback evaluation, so the system cannot identify all exact pronunciation errors.\n\nPractice suggestions\n→ Use direct recording and AI grading for more detailed French feedback.'
+      : 'Điểm mạnh\n✓ Bài nói đã được hệ thống nhận diện và nhìn chung có thể hiểu được.\n\nLỗi cần sửa\n△ Đây là đánh giá dự phòng khi AI chấm chi tiết chưa phản hồi, nên hệ thống chưa thể chỉ ra đầy đủ từng lỗi phát âm cụ thể.\n\nGợi ý luyện tập\n→ Bạn nên dùng thu âm trực tiếp và chấm AI để nhận góp ý chi tiết hơn theo rubric tiếng Pháp.'
   };
 }
 
@@ -1391,279 +1451,155 @@ const sanitizeLiaisonFeedback = (result, expectedText = '') => {
 
 const evaluateWithGemini = async (transcript, expectedText, level, mode, lang, requirement = '') => {
   const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-  const systemPrompt = `You are an expert French pronunciation coach, CEFR examiner, and spoken-language evaluator.
+  const systemPrompt = `You are an expert French speaking examiner and pronunciation coach for young Vietnamese learners.
 
-Language for feedback: ${lang === 'en' ? 'English' : 'Vietnamese'}.
-Task Mode: ${mode} (vocab = single word, sentence = shadowing, topic = presentation, free = unstructured speech).
+FEEDBACK LANGUAGE: ${lang === 'en' ? 'English' : 'Vietnamese'}.
+Task Mode: ${mode} (vocab = Shadowing theo từ, sentence = Shadowing theo câu, topic = Nói theo chủ đề có hướng dẫn, free = Nói tự do).
 Student CEFR Target: ${level}.
-Topic Requirement: "${requirement || 'None'}"
-Expected French Text: "${expectedText || 'None'}"
-Student Voice Transcript: "${transcript}"
+Topic Requirement / required ideas: "${requirement || 'None'}"
+Model / expected French text: "${expectedText || 'None'}"
+Student transcript from speech recognition: "${transcript}"
 
 ==================================================
-PRIMARY EVALUATION PHILOSOPHY
+ABSOLUTE LANGUAGE RULE
 ==================================================
-
-Evaluate like a real French teacher and pronunciation coach, not like speech-recognition software.
-
-The most important question is:
-"If a native French speaker heard this, would it be understandable, natural, and communicative?"
-
-If the answer is YES:
-- reward the learner
-- do not over-penalize small pronunciation imperfections
-- do not force isolated-word pronunciation if the sentence sounds naturally connected
-
-Natural, comprehensible communication is more important than perfect phonetic precision.
+If FEEDBACK LANGUAGE is Vietnamese, all feedback must be written in Vietnamese only.
+Do not mix English, Japanese, Spanish, Chinese, or French explanatory sentences into Vietnamese feedback, except French examples/words that are being corrected.
+Use the words "bạn", "Hệ thống", "AI". Never use "em", "thầy", "cô", "mình", or "tôi".
 
 ==================================================
-CRITICAL EVIDENCE-BASED FEEDBACK RULE
+CORE RUBRIC — FRENCH SPEAKING
 ==================================================
+Use the correct rubric for the task mode. The final score is on a 10-point scale.
 
-Every correction must be supported by evidence from the expected text and/or the student transcript.
+1) SHADOWING THEO TỪ — 10 điểm
+- vowel_consonant_score: Phát âm nguyên âm & phụ âm — 5 điểm
+- nasal_vowel_score: Nguyên âm mũi — 2 điểm
+- silent_letter_score: Âm câm — 1 điểm
+- french_sound_score: Âm đặc trưng tiếng Pháp, especially r, u, eu — 1 điểm
+- naturalness_score: Độ tự nhiên — 1 điểm
+Score bands:
+10: accurate sounds, clear nasal vowels, no silent-letter problem, good r/u/eu, near native.
+8–9: mostly correct, understandable, minor nasal/r/u issues.
+6–7: understandable main word, some vowel/nasal/silent-letter mistakes.
+4–5: many core sounds wrong, difficult recognition, reads too much by spelling.
 
-You may only mention an error if:
-1. the relevant word, sound, or word pair actually appears in the expected text or transcript; AND
-2. there is evidence that the learner likely produced it incorrectly; AND
-3. the issue affects clarity, naturalness, rhythm, or intelligibility.
+2) SHADOWING THEO CÂU — 10 điểm
+- pronunciation_score: Phát âm — 3 điểm
+- liaison_score: Liaison / nối âm — 2 điểm
+- intonation_score: Ngữ điệu — 1.5 điểm
+- rhythm_score: Rhythm / nhịp câu — 1.5 điểm
+- similarity_score: Similarity / độ giống mẫu — 2 điểm
+Score bands:
+10: accurate pronunciation, natural liaison, soft rhythm, French-like intonation, suitable speed.
+8–9: clear and understandable, small liaison/intonation/chunking issues.
+6–7: understandable, but word-by-word, missing liaisons, uneven rhythm.
+4–5: many words mispronounced, hard to recognize full sentence, little linking/rhythm.
 
-If you are uncertain, do NOT generate a correction.
-It is better to omit a correction than to invent one.
+3) NÓI THEO CHỦ ĐỀ CÓ HƯỚNG DẪN — 10 điểm
+This is Semi-Guided Speaking. The student has a topic, a sample model, and required ideas. The student does NOT have to repeat the model. Encourage original wording, personal experience, and expansion.
+- pronunciation_score: Phát âm — 2 điểm / 25% in detailed rubric. Check vowels, nasal vowels, basic liaison, intelligibility.
+- grammar_score: Ngữ pháp — 2 điểm / 20%. Check être, avoir, group-1 verbs, gender, conjugation.
+- vocab_score: Từ vựng đúng chủ đề — 1.5 điểm / 15%. Check topic-appropriate and varied vocabulary.
+- content_score: Nội dung đủ ý — 2 điểm / 25%. Check whether required ideas are covered, e.g. family members, jobs, siblings, activities.
+- fluency_score: Trôi chảy — 1.5 điểm / 15%. Check pauses, phrase groups, connected ideas.
+- topic_relevance_score: Liên quan đề bài — 1 điểm. Check whether the answer stays on the assigned topic.
+Important: Do not compare sentence-by-sentence with the model answer. The sample is only a reference.
 
-Never generate generic comments such as:
-- "Practice liaison more."
-- "Improve nasal vowels."
-- "Work on French R."
-- "Pay attention to intonation."
-
-Instead, feedback must name the exact word, sound, or word pair that needs attention.
-
-==================================================
-FRENCH CONNECTED SPEECH RULES
-==================================================
-
-French naturally includes:
-- connected speech
-- reductions
-- rhythm groups
-- sentence melody
-- enchaînement
-- liaison when appropriate
-
-Do NOT penalize natural connected speech.
-Do NOT expect every word to be pronounced separately.
-Do NOT mechanically split every word in sentence mode.
-
-==================================================
-STRICT LIAISON & ENCHAÎNEMENT RULES
-==================================================
-
-Only mention liaison or enchaînement if ALL conditions are met:
-
-1. The expected sentence actually contains a valid liaison or enchaînement opportunity.
-2. The student's transcript suggests that the connected pronunciation was not produced naturally.
-3. You can identify the exact word pair involved.
-
-Examples of valid liaison:
-- les enfants
-- vous avez
-- deux amis
-- trois heures
-- très intéressant
-- ils ont
-- nous avons
-
-Examples where liaison normally does NOT exist or should NOT be forced:
-- de nouvelles
-- et Marie
-- après lui
-- la amie should be treated as a grammar/article issue, not liaison
-
-VERY IMPORTANT:
-"de nouvelles" is NOT a liaison example. Never tell the learner to practice liaison between "de" and "nouvelles".
-
-Never write:
-- "Hãy luyện tập thêm về liaison."
-- "Hãy luyện tập thêm về liên kết giữa các từ."
-- "Practice word linking more."
-
-unless you provide a specific, valid word pair.
-
-If no valid liaison issue is detected, do not mention liaison at all.
+4) NÓI TỰ DO — 10 điểm
+The student may speak about any topic. Do NOT judge whether the topic is right/wrong, whether it matches a model, or whether it follows a prompt. Evaluate only French use.
+- pronunciation_score: Phát âm — 2.5 điểm / 25%. Check clarity, nasal vowels, basic liaison, French sounds.
+- fluency_score: Trôi chảy — 2.5 điểm / 25%. Check continuous speech, pauses, suitable speed.
+- grammar_score: Ngữ pháp — 2 điểm / 20%. Check conjugation, gender, singular/plural, sentence structure.
+- vocab_score: Từ vựng — 1.5 điểm / 15%. Check range and appropriateness.
+- idea_development_score: Phát triển ý — 1.5 điểm / 15%. Check explanation, examples, linking of ideas.
 
 ==================================================
-NASAL VOWEL RULES
+EVIDENCE-BASED ERROR RULE
 ==================================================
+Every correction must be specific. Do not write generic comments.
+You may only mention an error if the relevant word, sound, phrase, or grammar structure appears in the expected text, requirement, or transcript.
 
-Only mention nasal vowel errors if:
-- the expected word contains a nasal vowel; AND
-- there is evidence that the learner mispronounced it.
+Bad vague feedback:
+- "Cần luyện phát âm hơn."
+- "Cần chú ý ngữ pháp."
+- "Liaison chưa tốt."
 
-Examples of words with nasal vowels:
-- bon
-- bien
-- français
-- blanc
-- enfant
-- important
+Good specific feedback:
+- "ma mère travailler → ma mère travaille"
+- "mon sœur → ma sœur"
+- "je aller → je vais"
+- "Trong cụm mes amis, liaison /z/ chưa tự nhiên."
 
-Do NOT automatically generate nasal vowel feedback.
-If uncertain, omit it.
-
-==================================================
-FRENCH R RULES
-==================================================
-
-Only mention French /ʁ/ if:
-- the expected word contains /ʁ/; AND
-- there is evidence that the learner produced it incorrectly or it affected intelligibility.
-
-Do NOT automatically tell learners to improve French R.
-If uncertain, omit it.
+If you are uncertain, do not invent a correction.
 
 ==================================================
-SILENT LETTER RULES
+STRICT FRENCH PRONUNCIATION RULES
 ==================================================
-
-Only mention silent final letters if:
-- the word actually contains a normally silent final letter; AND
-- the transcript/evidence suggests the learner pronounced it incorrectly.
-
-Do not invent silent-letter errors.
-
-==================================================
-MODE RULES
-==================================================
-
-WORD MODE:
-Focus more carefully on:
-- vowel quality
-- consonants
-- nasal vowels when present
-- French /ʁ/ when present
-- intelligibility
-
-Sentence rhythm matters less.
-
-SENTENCE MODE:
-Prioritize:
-- fluency
-- rhythm
-- natural delivery
-- sentence melody
-- comprehensibility
-
-Do not over-focus on individual phonemes.
-A natural sentence should score higher than a robotic word-by-word sentence.
-
-TOPIC MODE:
-The model answer is only a reference, not a required script.
-Evaluate:
-- topic completion
-- communication ability
-- grammar
-- vocabulary
-- fluency
-- pronunciation
-
-Do not compare sentence-by-sentence with the model answer.
-
-FREE MODE:
-Estimate CEFR from:
-- fluency
-- pronunciation
-- grammar
-- vocabulary range
-- coherence
-- communicative effectiveness
+Only mention liaison if there is a valid liaison opportunity and you can name the exact pair, such as les amis, vous avez, nous allons, très intéressant, ils ont.
+Do NOT claim liaison for de nouvelles, et Marie, après lui.
+Only mention nasal vowels if the word contains a nasal vowel and the transcript suggests a likely issue, such as bon, bien, français, enfant, important, intéressant.
+Only mention French r/u/eu or silent letters when the word actually contains that feature and there is evidence of a problem.
 
 ==================================================
 NON-FRENCH DETECTION
 ==================================================
-
-If the response is mostly Vietnamese, English, Chinese, Japanese, German, Spanish, or another non-French language unrelated to the exercise:
-- set severity to "major"
-- lower comprehensibility and overall score significantly
-- clearly state that the response was not primarily in French
-- explain that French pronunciation and fluency could not be evaluated accurately
-
-Do not reward a response that is mainly not in French.
+If the response is mostly Vietnamese, English, Chinese, Japanese, German, Spanish, or another non-French language:
+- score low, usually 2.0–4.0
+- severity = major
+- explain that French pronunciation/fluency could not be evaluated accurately
+- do not reward the answer as French speaking.
 
 ==================================================
-SCORING CALIBRATION
+REQUIRED FEEDBACK FORMAT
 ==================================================
+For Vietnamese feedback, write exactly these three sections:
+Điểm mạnh
+✓ ...
+✓ ...
 
-9.0 - 10.0:
-Natural, highly understandable, only minor imperfections.
+Lỗi cần sửa
+△ or ✗ exact mistake → corrected form
+△ or ✗ exact mistake → corrected form
+If no important mistake: "Không có lỗi đáng kể."
 
-8.0 - 8.9:
-Strong communication, small pronunciation or rhythm issues.
+Gợi ý luyện tập
+→ ...
+→ ...
 
-7.0 - 7.9:
-Good communication, noticeable but non-blocking issues.
-
-6.0 - 6.9:
-Understandable but needs improvement.
-
-5.0 - 5.9:
-Frequent issues affecting naturalness or clarity.
-
-Below 5.0:
-Communication significantly impaired or not primarily in French.
-
-Severity:
-- minor = small issue, still natural and easy to understand
-- moderate = affects clarity or naturalness somewhat
-- major = causes misunderstanding or response is mostly not French
-
-Only use "major" when communication is truly affected.
+For topic mode, include missing required ideas if any.
+For free mode, suggest the formula: Opinion → Raison → Exemple → Conclusion when relevant.
+For vocab/sentence shadowing, suggest specific French words or phrase chunks to repeat.
 
 ==================================================
-VIETNAMESE FEEDBACK STYLE
+OUTPUT JSON ONLY
 ==================================================
-
-When writing feedback in Vietnamese:
-Use:
-- "bạn"
-- "Hệ thống"
-- "AI"
-
-Never use:
-- em
-- thầy
-- cô
-- mình
-- tôi
-
-Tone must be:
-- professional
-- warm
-- specific
-- encouraging
-- evidence-based
-
-==================================================
-OUTPUT FORMAT
-==================================================
-
-Return ONLY a valid JSON object matching this schema:
+Return ONLY a valid JSON object matching this schema. All score fields are strings from 0.0 to 10.0:
 {
-  "score": "Overall score from 0.0 to 10.0",
-  "level": "Performance rank. English: Excellent/Good/Fair/Needs Practice. Vietnamese: Xuất sắc/Giỏi/Khá/Cần cố gắng",
-  "estimated_cefr": "Estimated CEFR level: A1, A2, B1, B2, C1, or C2. Mandatory for free mode, otherwise may be empty.",
+  "score": "overall score from 0.0 to 10.0",
+  "level": "English: Excellent/Good/Fair/Needs Practice. Vietnamese: Xuất sắc/Giỏi/Khá/Cần cố gắng",
+  "estimated_cefr": "A1, A2, B1, B2, C1, or C2. Mandatory for free mode; otherwise may be empty.",
   "severity": "minor/moderate/major",
-  "feedback": "Detailed, personalized feedback based only on detected evidence.",
-  "pronunciation_score": "0.0 to 10.0 string",
-  "fluency_score": "0.0 to 10.0 string",
-  "naturalness_score": "0.0 to 10.0 string",
-  "intonation_rhythm_score": "0.0 to 10.0 string",
-  "comprehensibility_score": "0.0 to 10.0 string",
-  "grammar_score": "0.0 to 10.0 string",
-  "vocab_score": "0.0 to 10.0 string",
-  "topic_relevance_score": "0.0 to 10.0 string",
+  "feedback": "formatted feedback with Điểm mạnh / Lỗi cần sửa / Gợi ý luyện tập",
+  "vowel_consonant_score": "0.0 to 10.0",
+  "nasal_vowel_score": "0.0 to 10.0",
+  "silent_letter_score": "0.0 to 10.0",
+  "french_sound_score": "0.0 to 10.0",
+  "naturalness_score": "0.0 to 10.0",
+  "pronunciation_score": "0.0 to 10.0",
+  "liaison_score": "0.0 to 10.0",
+  "intonation_score": "0.0 to 10.0",
+  "rhythm_score": "0.0 to 10.0",
+  "similarity_score": "0.0 to 10.0",
+  "fluency_score": "0.0 to 10.0",
+  "grammar_score": "0.0 to 10.0",
+  "vocab_score": "0.0 to 10.0",
+  "content_score": "0.0 to 10.0",
+  "topic_relevance_score": "0.0 to 10.0",
+  "idea_development_score": "0.0 to 10.0",
   "errors": [
     {
-      "word": "exact word, sound, or valid word pair from expected text/transcript",
+      "word": "exact word, sound, phrase, or valid word pair",
       "issue": "specific issue supported by evidence",
       "severity": "minor/moderate/major",
       "suggestion": "specific correction"
@@ -1721,6 +1657,95 @@ Return ONLY a valid JSON object matching this schema:
   return null;
 };
 
+
+const transcribeFrenchAudio = async (file) => {
+  const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('model', 'gpt-4o-mini-transcribe');
+  formData.append('language', 'fr');
+
+  const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}` },
+    body: formData
+  });
+
+  if (!res.ok) throw new Error('Transcribe failed');
+  const data = await res.json();
+  return data.text || '';
+};
+
+const safeScore = (value, fallback = '0.0') => {
+  const parsed = parseFloat(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(10, Math.max(0, parsed)).toFixed(1);
+};
+
+const pickScore = (apiRes, fields, fallback = '0.0') => {
+  for (const field of fields) {
+    if (apiRes?.[field] !== undefined && apiRes?.[field] !== null && String(apiRes[field]).trim() !== '') {
+      return safeScore(apiRes[field], fallback);
+    }
+  }
+  return fallback;
+};
+
+const buildGradingResultFromApi = (apiRes, mode, lang, t) => {
+  const score = safeScore(apiRes?.score, '0.0');
+  const criteriaByMode = {
+    vocab: {
+      [t('cVowelConsonant')]: pickScore(apiRes, ['vowel_consonant_score', 'pronunciation_score'], score),
+      [t('cNasalVowel')]: pickScore(apiRes, ['nasal_vowel_score'], score),
+      [t('cSilentLetters')]: pickScore(apiRes, ['silent_letter_score'], score),
+      [t('cFrenchSounds')]: pickScore(apiRes, ['french_sound_score'], score),
+      [t('cNaturalness')]: pickScore(apiRes, ['naturalness_score'], score)
+    },
+    sentence: {
+      [t('cPronunciation')]: pickScore(apiRes, ['pronunciation_score'], score),
+      [t('cLiaison')]: pickScore(apiRes, ['liaison_score'], score),
+      [t('cIntonation')]: pickScore(apiRes, ['intonation_score', 'intonation_rhythm_score'], score),
+      [t('cRhythm')]: pickScore(apiRes, ['rhythm_score', 'intonation_rhythm_score'], score),
+      [t('cSimilarity')]: pickScore(apiRes, ['similarity_score', 'comprehensibility_score'], score)
+    },
+    topic: {
+      [t('cPronunciation')]: pickScore(apiRes, ['pronunciation_score'], score),
+      [t('cGrammar')]: pickScore(apiRes, ['grammar_score'], score),
+      [t('cVocab')]: pickScore(apiRes, ['vocab_score'], score),
+      [t('cContent')]: pickScore(apiRes, ['content_score', 'completeness_score'], score),
+      [t('cFluency')]: pickScore(apiRes, ['fluency_score'], score),
+      [t('cTopicRelevance')]: pickScore(apiRes, ['topic_relevance_score'], score)
+    },
+    free: {
+      [t('cPronunciation')]: pickScore(apiRes, ['pronunciation_score'], score),
+      [t('cFluency')]: pickScore(apiRes, ['fluency_score'], score),
+      [t('cGrammar')]: pickScore(apiRes, ['grammar_score'], score),
+      [t('cVocab')]: pickScore(apiRes, ['vocab_score'], score),
+      [t('cIdeaDev')]: pickScore(apiRes, ['idea_development_score', 'content_score'], score)
+    }
+  };
+
+  return {
+    score,
+    level: apiRes?.level || (lang === 'en' ? 'Fair' : 'Khá'),
+    estimated_cefr: apiRes?.estimated_cefr || '',
+    criteria: criteriaByMode[mode] || criteriaByMode.free,
+    feedback: apiRes?.feedback || (lang === 'en'
+      ? 'Strengths\n✓ The recording was received.\n\nErrors to fix\n△ The system could not generate detailed feedback.\n\nPractice suggestions\n→ Please try recording again.'
+      : 'Điểm mạnh\n✓ Hệ thống đã nhận được bản ghi âm.\n\nLỗi cần sửa\n△ Hệ thống chưa tạo được nhận xét chi tiết.\n\nGợi ý luyện tập\n→ Bạn vui lòng thu âm lại để AI chấm chính xác hơn.')
+  };
+};
+
+const buildUnrecognizedResult = (mode, lang, t) => ({
+  score: '2.0',
+  level: lang === 'en' ? 'Needs Practice' : 'Cần cố gắng',
+  estimated_cefr: '',
+  criteria: buildGradingResultFromApi({ score: '2.0' }, mode, lang, t).criteria,
+  feedback: lang === 'en'
+    ? 'Strengths\n✓ The system received your audio.\n\nErrors to fix\n✗ The system could not clearly recognize what you said.\n\nPractice suggestions\n→ Please check your microphone, speak a little louder, and record again in French.'
+    : 'Điểm mạnh\n✓ Hệ thống đã nhận được bản ghi âm của bạn.\n\nLỗi cần sửa\n✗ Hệ thống không nhận diện rõ bạn nói gì, nên chưa thể chấm chính xác theo rubric tiếng Pháp.\n\nGợi ý luyện tập\n→ Bạn hãy kiểm tra micro, nói rõ hơn một chút và thu lại bằng tiếng Pháp.'
+});
+
 // ---------------------------------------------------------
 // COMPONENT: THU ÂM (TÍCH HỢP SPEECH RECOGNITION + OPENAI )
 // ---------------------------------------------------------
@@ -1745,30 +1770,7 @@ export const AudioInput = ({ onAudioReady }) => {
   };
 
   // 🧠 OpenAI transcribe
-  const transcribe = async (file) => {
-    const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("model", "gpt-4o-mini-transcribe");
-    formData.append("language", "fr");
-
-    const res = await fetch(
-      "https://api.openai.com/v1/audio/transcriptions",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: formData,
-      }
-    );
-
-    if (!res.ok) throw new Error("Transcribe failed");
-
-    const data = await res.json();
-    return data.text;
-  };
+  const transcribe = async (file) => transcribeFrenchAudio(file);
 
   const startRecording = async () => {
     try {
@@ -1834,11 +1836,19 @@ export const AudioInput = ({ onAudioReady }) => {
     setIsRecording(false);
   };
 
-  const handleFileChange = (e) => {
+  const handleFileChange = async (e) => {
     if (!e.target.files?.length) return;
     const file = e.target.files[0];
+    let finalTranscript = null;
 
-    onAudioReady(file, URL.createObjectURL(file), null, true);
+    try {
+      finalTranscript = await transcribe(file);
+      console.log("✅ AI RESULT:", finalTranscript);
+    } catch (err) {
+      console.log("❌ OpenAI error:", err);
+    }
+
+    onAudioReady(file, URL.createObjectURL(file), finalTranscript, true);
   };
 
   return (
@@ -1965,79 +1975,51 @@ function FreeAndTopicMode({ type, studentName, onRequireName, dbTopics }) {
   };
 
   const startGrading = async () => {
-    if (type === 'topic' && !selectedTopicId) { alert(lang === 'en' ? "Please select a topic!" : "Vui lòng chọn một chủ đề!"); return; }
-    if (!selectedFile) { alert(lang === 'en' ? "Please provide audio!" : "Vui lòng tải lên hoặc thu âm bài nói!"); return; }
+    if (type === 'topic' && !selectedTopicId) {
+      alert(lang === 'en' ? "Please select a topic!" : "Vui lòng chọn một chủ đề!");
+      return;
+    }
+    if (!selectedFile) {
+      alert(lang === 'en' ? "Please provide audio!" : "Vui lòng tải lên hoặc thu âm bài nói!");
+      return;
+    }
 
-    setStep(1); // Cập nhật state để hiển thị màn hình loading
+    setStep(1);
 
     try {
-      // Đợi 0.5s để React ưu tiên hiển thị UI màn hình Đang Tải trước khi khối lệnh chấm điểm chạy
-      await new Promise(r => setTimeout(r, 500));
+      await new Promise(r => setTimeout(r, 300));
 
-      let finalResult;
-      if (isFileUpload) {
-        const baseScore = 6.0 + Math.random() * 3.0;
-        const clamp = (val) => Math.min(10.0, Math.max(0.0, parseFloat(val) || 0)).toFixed(1);
-        finalResult = {
-          score: clamp(baseScore),
-          level: lang === 'en' ? (baseScore >= 8 ? 'Good' : 'Fair') : (baseScore >= 8 ? 'Giỏi' : 'Khá'),
-          criteria: {
-            [t('cPronunciation')]: clamp(baseScore - 0.2),
-            [t('cFluency')]: clamp(baseScore)
-          },
-          feedback: lang === 'en'
-            ? `[AUDIO FILE UPLOAD MODE]\nDue to browser limits, detailed pronunciation errors cannot be extracted from uploaded files. Use "Direct Record" for full French pronunciation analysis.`
-            : `[CHÚ Ý: BẠN ĐANG TẢI FILE ÂM THANH]\nDo hạn chế của trình duyệt, hệ thống không thể bóc tách từng lỗi ngữ âm chính xác từ file có sẵn. Hãy dùng nút "Thu âm trực tiếp" để AI phân tích chính xác phát âm tiếng Pháp nhé!`
-        };
-      } else {
-        const expectedText = type === 'topic' ? currentTopic?.hint?.fr || '' : '';
-        const topicRequirement = type === 'topic' ? currentTopic?.req || '' : '';
-        const levelTarget = type === 'topic' ? currentTopic?.level || 'B1' : 'B1';
+      const expectedText = type === 'topic' ? currentTopic?.hint?.fr || '' : '';
+      const topicRequirement = type === 'topic' ? currentTopic?.req || '' : '';
+      const levelTarget = type === 'topic' ? currentTopic?.level || 'A1' : 'A1';
+      let finalTranscript = transcript;
 
-        // SỬA LỖI: Cho phép nhận diện cả những từ có 1 ký tự (độ dài === 0 mới báo lỗi)
-        if (!transcript || transcript.trim().length === 0) {
-          finalResult = {
-            score: '2.0', level: lang === 'en' ? 'Needs Practice' : 'Cần luyện tập thêm',
-            criteria: { [t('cPronunciation')]: '2.0', [t('cFluency')]: '2.0' },
-            feedback: lang === 'en' ? 'The system could not clearly recognize what you said. Please check your microphone and speak louder.' : 'Hệ thống không nhận diện rõ bạn nói gì. Vui lòng kiểm tra Micro và thử nói lớn hơn nhé.'
-          };
-        } else {
-          const apiRes = await evaluateWithGemini(transcript, expectedText, levelTarget, type, lang, topicRequirement);
-          if (apiRes) {
-            finalResult = {
-              score: apiRes.score,
-              level: apiRes.level,
-              estimated_cefr: apiRes.estimated_cefr || apiRes.estimated_cefr || '',
-              criteria: {
-                [t('cPronunciation')]: apiRes.pronunciation_score || "0.0",
-                [t('cFluency')]: apiRes.fluency_score || "0.0",
-                [t('cNaturalness')]: apiRes.naturalness_score || "0.0",
-                [t('cPronunRhythm')]: apiRes.intonation_rhythm_score || "0.0",
-                [t('cClarity')]: apiRes.comprehensibility_score || "0.0",
-              },
-              feedback: apiRes.feedback
-            };
-            if (type === 'topic') {
-              finalResult.criteria[t('cGrammar')] = apiRes.grammar_score || "0.0";
-              finalResult.criteria[t('cVocabRichness')] = apiRes.vocab_score || "0.0";
-              finalResult.criteria[t('cTopicRelevance')] = apiRes.topic_relevance_score || apiRes.accuracy_score || "0.0";
-            } else {
-              finalResult.criteria[t('cGrammar')] = apiRes.grammar_score || "0.0";
-              finalResult.criteria[t('cIdeaDev')] = apiRes.vocab_score || "0.0";
-            }
-          } else {
-            // Fallback an toàn nếu API quá tải
-            finalResult = generateGradingResultFallback(transcript, expectedText, levelTarget, type, lang, t);
-          }
+      if (!finalTranscript || finalTranscript.trim().length === 0) {
+        try {
+          finalTranscript = await transcribeFrenchAudio(selectedFile);
+          setTranscript(finalTranscript);
+        } catch (error) {
+          console.error('Transcription failed:', error);
         }
       }
+
+      if (!finalTranscript || finalTranscript.trim().length === 0) {
+        setResult(buildUnrecognizedResult(type, lang, t));
+        setStep(2);
+        return;
+      }
+
+      const apiRes = await evaluateWithGemini(finalTranscript, expectedText, levelTarget, type, lang, topicRequirement);
+      const finalResult = apiRes
+        ? buildGradingResultFromApi(apiRes, type, lang, t)
+        : generateGradingResultFallback(finalTranscript, expectedText, levelTarget, type, lang, t);
 
       setResult(finalResult);
       setStep(2);
     } catch (error) {
       console.error("Lỗi khi đánh giá:", error);
       const expectedText = type === 'topic' ? currentTopic?.hint?.fr || '' : '';
-      const levelTarget = type === 'topic' ? currentTopic?.level || 'B1' : 'B1';
+      const levelTarget = type === 'topic' ? currentTopic?.level || 'A1' : 'A1';
       setResult(generateGradingResultFallback(transcript, expectedText, levelTarget, type, lang, t));
       setStep(2);
     }
@@ -2152,6 +2134,9 @@ function ShadowingMode({ studentName, onRequireName, dbShadowing }) {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [isPlayingModel, setIsPlayingModel] = useState(false);
+  const [recordedTranscript, setRecordedTranscript] = useState(null);
+  const [isGrading, setIsGrading] = useState(false);
+  const [result, setResult] = useState(null);
 
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
@@ -2192,6 +2177,8 @@ function ShadowingMode({ studentName, onRequireName, dbShadowing }) {
 
   const resetRecording = () => {
     setRecordedFile(null);
+    setRecordedTranscript(null);
+    setResult(null);
     if (recordedUrl) URL.revokeObjectURL(recordedUrl);
     setRecordedUrl(null);
   };
@@ -2231,13 +2218,21 @@ function ShadowingMode({ studentName, onRequireName, dbShadowing }) {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
 
-      recorder.onstop = () => {
+      recorder.onstop = async () => {
         const blob = new Blob(chunksRef.current, { type: recorder.mimeType });
         const file = new File([blob], 'shadowing-recording.mp4', { type: blob.type });
         setRecordedFile(file);
         setRecordedUrl(URL.createObjectURL(blob));
         clearInterval(timerRef.current);
         setRecordingTime(0);
+
+        try {
+          const text = await transcribeFrenchAudio(file);
+          setRecordedTranscript(text);
+        } catch (error) {
+          console.error('Shadowing transcription failed:', error);
+          setRecordedTranscript(null);
+        }
       };
 
       recorder.start();
@@ -2258,18 +2253,67 @@ function ShadowingMode({ studentName, onRequireName, dbShadowing }) {
     setIsRecording(false);
   };
 
-  const handleFileChange = (e) => {
+  const handleFileChange = async (e) => {
     if (!e.target.files?.length) return;
     const file = e.target.files[0];
     resetRecording();
     setRecordedFile(file);
     setRecordedUrl(URL.createObjectURL(file));
     e.target.value = '';
+
+    try {
+      const text = await transcribeFrenchAudio(file);
+      setRecordedTranscript(text);
+    } catch (error) {
+      console.error('Shadowing upload transcription failed:', error);
+      setRecordedTranscript(null);
+    }
   };
 
   const nextItem = () => {
     resetRecording();
     setCurrentIndex(prev => prev + 1);
+  };
+
+  const gradeShadowing = async () => {
+    if (!recordedFile) {
+      alert(lang === 'en' ? 'Please record or upload audio first.' : 'Vui lòng thu âm hoặc tải file lên trước.');
+      return;
+    }
+
+    setIsGrading(true);
+    try {
+      const currentItem = selectedLesson.items[currentIndex];
+      const gradingMode = type === 'vocab' ? 'vocab' : 'sentence';
+      let finalTranscript = recordedTranscript;
+
+      if (!finalTranscript || finalTranscript.trim().length === 0) {
+        try {
+          finalTranscript = await transcribeFrenchAudio(recordedFile);
+          setRecordedTranscript(finalTranscript);
+        } catch (error) {
+          console.error('Shadowing transcription failed:', error);
+        }
+      }
+
+      if (!finalTranscript || finalTranscript.trim().length === 0) {
+        setResult(buildUnrecognizedResult(gradingMode, lang, t));
+        return;
+      }
+
+      const apiRes = await evaluateWithGemini(finalTranscript, currentItem?.fr || '', level, gradingMode, lang, '');
+      setResult(apiRes
+        ? buildGradingResultFromApi(apiRes, gradingMode, lang, t)
+        : generateGradingResultFallback(finalTranscript, currentItem?.fr || '', level, gradingMode, lang, t)
+      );
+    } catch (error) {
+      console.error('Shadowing grading failed:', error);
+      const currentItem = selectedLesson.items[currentIndex];
+      const gradingMode = type === 'vocab' ? 'vocab' : 'sentence';
+      setResult(generateGradingResultFallback(recordedTranscript, currentItem?.fr || '', level, gradingMode, lang, t));
+    } finally {
+      setIsGrading(false);
+    }
   };
 
   if (setupStep) {
@@ -2336,6 +2380,19 @@ function ShadowingMode({ studentName, onRequireName, dbShadowing }) {
   }
 
   const currentItem = selectedLesson.items[currentIndex];
+
+  if (result) {
+    return (
+      <div className="max-w-4xl mx-auto mt-8 animate-in fade-in duration-500 px-4 pb-20">
+        <ReportCard
+          result={result}
+          studentName={studentName}
+          fileUrl={recordedUrl}
+          onReset={() => { setResult(null); resetRecording(); }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl mx-auto mt-8 animate-in fade-in duration-500 px-4 pb-20">
@@ -2425,8 +2482,8 @@ function ShadowingMode({ studentName, onRequireName, dbShadowing }) {
                 <h4 className="font-bold text-slate-800 mb-2 text-lg">{lang === 'en' ? 'Recording saved' : 'Đã lưu bản thu âm'}</h4>
                 <p className="text-sm text-slate-700 mb-4 leading-relaxed font-medium">
                   {lang === 'en'
-                    ? 'Listen to your recording again, compare it with the sample, then practice it again or move on to the next item.'
-                    : 'Hãy nghe lại bản thu của mình, so sánh với mẫu, rồi luyện lại hoặc chuyển sang mục tiếp theo.'}
+                    ? 'Listen to your recording again, compare it with the sample, then grade it with AI or move on to the next item.'
+                    : 'Hãy nghe lại bản thu của mình, so sánh với mẫu, rồi chấm điểm AI hoặc chuyển sang mục tiếp theo.'}
                 </p>
                 <div className="bg-white/60 p-2 rounded-lg inline-block w-full">
                   <audio controls src={recordedUrl} className="h-10 w-full rounded" />
@@ -2435,10 +2492,13 @@ function ShadowingMode({ studentName, onRequireName, dbShadowing }) {
             </div>
 
             <div className="flex flex-col sm:flex-row gap-4 mt-8 pt-6 border-t border-slate-200">
-              <button onClick={resetRecording} className="flex-1 py-4 bg-white border border-slate-300 hover:border-[#0055A4] hover:text-[#0055A4] text-slate-700 font-bold rounded-xl transition-colors flex items-center justify-center gap-2">
+              <button onClick={resetRecording} disabled={isGrading} className="flex-1 py-4 bg-white border border-slate-300 hover:border-[#0055A4] hover:text-[#0055A4] text-slate-700 font-bold rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-50">
                 <RefreshCcw size={18} /> {t('tryAgain')}
               </button>
-              <button onClick={nextItem} className="flex-1 py-4 bg-[#0055A4] hover:bg-[#003F7D] text-white font-black tracking-wide rounded-xl transition-colors flex items-center justify-center gap-2 shadow-lg shadow-blue-500/30">
+              <button onClick={gradeShadowing} disabled={isGrading} className="flex-1 py-4 bg-amber-400 hover:bg-amber-500 text-amber-950 font-black tracking-wide rounded-xl transition-colors flex items-center justify-center gap-2 shadow-lg disabled:opacity-50">
+                <Sparkles size={18} /> {isGrading ? t('aiEvaluating') : t('recBtn')}
+              </button>
+              <button onClick={nextItem} disabled={isGrading} className="flex-1 py-4 bg-[#0055A4] hover:bg-[#003F7D] text-white font-black tracking-wide rounded-xl transition-colors flex items-center justify-center gap-2 shadow-lg shadow-blue-500/30 disabled:opacity-50">
                 {t('nextItem')} <ChevronRight size={20} />
               </button>
             </div>
