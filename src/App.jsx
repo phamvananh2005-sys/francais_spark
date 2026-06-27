@@ -2134,9 +2134,6 @@ function ShadowingMode({ studentName, onRequireName, dbShadowing }) {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [isPlayingModel, setIsPlayingModel] = useState(false);
-  const [recordedTranscript, setRecordedTranscript] = useState(null);
-  const [isGrading, setIsGrading] = useState(false);
-  const [result, setResult] = useState(null);
 
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
@@ -2177,8 +2174,6 @@ function ShadowingMode({ studentName, onRequireName, dbShadowing }) {
 
   const resetRecording = () => {
     setRecordedFile(null);
-    setRecordedTranscript(null);
-    setResult(null);
     if (recordedUrl) URL.revokeObjectURL(recordedUrl);
     setRecordedUrl(null);
   };
@@ -2218,21 +2213,13 @@ function ShadowingMode({ studentName, onRequireName, dbShadowing }) {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
 
-      recorder.onstop = async () => {
+      recorder.onstop = () => {
         const blob = new Blob(chunksRef.current, { type: recorder.mimeType });
         const file = new File([blob], 'shadowing-recording.mp4', { type: blob.type });
         setRecordedFile(file);
         setRecordedUrl(URL.createObjectURL(blob));
         clearInterval(timerRef.current);
         setRecordingTime(0);
-
-        try {
-          const text = await transcribeFrenchAudio(file);
-          setRecordedTranscript(text);
-        } catch (error) {
-          console.error('Shadowing transcription failed:', error);
-          setRecordedTranscript(null);
-        }
       };
 
       recorder.start();
@@ -2253,67 +2240,18 @@ function ShadowingMode({ studentName, onRequireName, dbShadowing }) {
     setIsRecording(false);
   };
 
-  const handleFileChange = async (e) => {
+  const handleFileChange = (e) => {
     if (!e.target.files?.length) return;
     const file = e.target.files[0];
     resetRecording();
     setRecordedFile(file);
     setRecordedUrl(URL.createObjectURL(file));
     e.target.value = '';
-
-    try {
-      const text = await transcribeFrenchAudio(file);
-      setRecordedTranscript(text);
-    } catch (error) {
-      console.error('Shadowing upload transcription failed:', error);
-      setRecordedTranscript(null);
-    }
   };
 
   const nextItem = () => {
     resetRecording();
     setCurrentIndex(prev => prev + 1);
-  };
-
-  const gradeShadowing = async () => {
-    if (!recordedFile) {
-      alert(lang === 'en' ? 'Please record or upload audio first.' : 'Vui lòng thu âm hoặc tải file lên trước.');
-      return;
-    }
-
-    setIsGrading(true);
-    try {
-      const currentItem = selectedLesson.items[currentIndex];
-      const gradingMode = type === 'vocab' ? 'vocab' : 'sentence';
-      let finalTranscript = recordedTranscript;
-
-      if (!finalTranscript || finalTranscript.trim().length === 0) {
-        try {
-          finalTranscript = await transcribeFrenchAudio(recordedFile);
-          setRecordedTranscript(finalTranscript);
-        } catch (error) {
-          console.error('Shadowing transcription failed:', error);
-        }
-      }
-
-      if (!finalTranscript || finalTranscript.trim().length === 0) {
-        setResult(buildUnrecognizedResult(gradingMode, lang, t));
-        return;
-      }
-
-      const apiRes = await evaluateWithGemini(finalTranscript, currentItem?.fr || '', level, gradingMode, lang, '');
-      setResult(apiRes
-        ? buildGradingResultFromApi(apiRes, gradingMode, lang, t)
-        : generateGradingResultFallback(finalTranscript, currentItem?.fr || '', level, gradingMode, lang, t)
-      );
-    } catch (error) {
-      console.error('Shadowing grading failed:', error);
-      const currentItem = selectedLesson.items[currentIndex];
-      const gradingMode = type === 'vocab' ? 'vocab' : 'sentence';
-      setResult(generateGradingResultFallback(recordedTranscript, currentItem?.fr || '', level, gradingMode, lang, t));
-    } finally {
-      setIsGrading(false);
-    }
   };
 
   if (setupStep) {
@@ -2380,19 +2318,6 @@ function ShadowingMode({ studentName, onRequireName, dbShadowing }) {
   }
 
   const currentItem = selectedLesson.items[currentIndex];
-
-  if (result) {
-    return (
-      <div className="max-w-4xl mx-auto mt-8 animate-in fade-in duration-500 px-4 pb-20">
-        <ReportCard
-          result={result}
-          studentName={studentName}
-          fileUrl={recordedUrl}
-          onReset={() => { setResult(null); resetRecording(); }}
-        />
-      </div>
-    );
-  }
 
   return (
     <div className="max-w-4xl mx-auto mt-8 animate-in fade-in duration-500 px-4 pb-20">
@@ -2482,8 +2407,8 @@ function ShadowingMode({ studentName, onRequireName, dbShadowing }) {
                 <h4 className="font-bold text-slate-800 mb-2 text-lg">{lang === 'en' ? 'Recording saved' : 'Đã lưu bản thu âm'}</h4>
                 <p className="text-sm text-slate-700 mb-4 leading-relaxed font-medium">
                   {lang === 'en'
-                    ? 'Listen to your recording again, compare it with the sample, then grade it with AI or move on to the next item.'
-                    : 'Hãy nghe lại bản thu của mình, so sánh với mẫu, rồi chấm điểm AI hoặc chuyển sang mục tiếp theo.'}
+                    ? 'Listen to your recording again, compare it with the sample, then practice it again or move on to the next item.'
+                    : 'Hãy nghe lại bản thu của mình, so sánh với mẫu, rồi luyện lại hoặc chuyển sang mục tiếp theo.'}
                 </p>
                 <div className="bg-white/60 p-2 rounded-lg inline-block w-full">
                   <audio controls src={recordedUrl} className="h-10 w-full rounded" />
@@ -2492,13 +2417,10 @@ function ShadowingMode({ studentName, onRequireName, dbShadowing }) {
             </div>
 
             <div className="flex flex-col sm:flex-row gap-4 mt-8 pt-6 border-t border-slate-200">
-              <button onClick={resetRecording} disabled={isGrading} className="flex-1 py-4 bg-white border border-slate-300 hover:border-[#0055A4] hover:text-[#0055A4] text-slate-700 font-bold rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-50">
+              <button onClick={resetRecording} className="flex-1 py-4 bg-white border border-slate-300 hover:border-[#0055A4] hover:text-[#0055A4] text-slate-700 font-bold rounded-xl transition-colors flex items-center justify-center gap-2">
                 <RefreshCcw size={18} /> {t('tryAgain')}
               </button>
-              <button onClick={gradeShadowing} disabled={isGrading} className="flex-1 py-4 bg-amber-400 hover:bg-amber-500 text-amber-950 font-black tracking-wide rounded-xl transition-colors flex items-center justify-center gap-2 shadow-lg disabled:opacity-50">
-                <Sparkles size={18} /> {isGrading ? t('aiEvaluating') : t('recBtn')}
-              </button>
-              <button onClick={nextItem} disabled={isGrading} className="flex-1 py-4 bg-[#0055A4] hover:bg-[#003F7D] text-white font-black tracking-wide rounded-xl transition-colors flex items-center justify-center gap-2 shadow-lg shadow-blue-500/30 disabled:opacity-50">
+              <button onClick={nextItem} className="flex-1 py-4 bg-[#0055A4] hover:bg-[#003F7D] text-white font-black tracking-wide rounded-xl transition-colors flex items-center justify-center gap-2 shadow-lg shadow-blue-500/30">
                 {t('nextItem')} <ChevronRight size={20} />
               </button>
             </div>
